@@ -15,7 +15,5 @@ IF (WIN32)
     target_link_libraries(rogue raylib gdi32 winmm)
 ELSE()
     find_package(raylib REQUIRED)
-    target_include_directories(rogue PUBLIC ${RAYLIB_DIR}/include)
     target_link_libraries(rogue raylib)
 ENDIF()
-

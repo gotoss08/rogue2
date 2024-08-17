@@ -1,5 +1,7 @@
 .cache
 *.exe
+.zed/
+rogue
 
 # Cmake
 CMakeLists.txt.user
