@@ -6,6 +6,8 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define dbg_dec(x) printf("DEBUG: [%s] = %d\n", #x, x)
+
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
 
@@ -41,6 +43,7 @@ typedef struct {
 typedef struct {
     Coord coord;
     Glyph glyph;
+    int visionRadius;
 } Actor;
 
 typedef struct {
@@ -55,10 +58,13 @@ typedef struct {
     GameCamera camera;
 
     int map[MAP_HEIGHT][MAP_WIDTH];
+    char los[MAP_HEIGHT][MAP_WIDTH];
 
     Actor player;
     Actor actors[1024];
     size_t actors_count;
+
+    bool useLOS;
 
 } Game;
 
@@ -67,6 +73,7 @@ void generateMap(Game* game) {
     for (size_t y = 0; y < MAP_HEIGHT; ++y) {
         for (size_t x = 0; x < MAP_WIDTH; ++x) {
             game->map[y][x] = 0;
+            game->los[y][x] = 0;
         }
     }
 
@@ -186,9 +193,19 @@ void generateMap(Game* game) {
 
     }
 
-    size_t randomRoom = GetRandomValue(0, roomsCount);
-    game->player.coord.x = GetRandomValue(rooms[randomRoom + 0], rooms[randomRoom + 2]);
-    game->player.coord.y = GetRandomValue(rooms[randomRoom + 1], rooms[randomRoom + 3]);
+    // place player at random room
+
+    int px, py;
+    while(1) {
+        size_t randomRoom = GetRandomValue(0, roomsCount);
+        px = GetRandomValue(rooms[randomRoom + 0], rooms[randomRoom + 2]);
+        py = GetRandomValue(rooms[randomRoom + 1], rooms[randomRoom + 3]);
+        if (game->map[py][px] > 0) break;
+    }
+    game->player.coord.x = px;
+    game->player.coord.y = py;
+
+    // place walls at map edges
 
     for (size_t y = 0; y < MAP_HEIGHT; ++y) {
         for (size_t x = 0; x < MAP_WIDTH; ++x) {
@@ -204,6 +221,8 @@ void renderMap(Game* game) {
 
     for (size_t y = 0; y < MAP_HEIGHT; ++y) {
         for (size_t x = 0; x < MAP_WIDTH; ++x) {
+
+            if (game->useLOS && game->los[y][x] == 0) continue;
 
             int glyphX = (x * cellSize - game->camera.position.x);
             int glyphY = (y * cellSize - game->camera.position.y);
@@ -250,6 +269,104 @@ void initPlayer(Actor* player) {
     player->glyph.fgColor = WHITE;
     player->glyph.bgColor = BLACK;
     player->glyph.speed = 10;
+    player->visionRadius = 20;
+
+}
+void swap(int *lhs, int *rhs) {
+    int temp = *lhs;
+    *lhs = *rhs;
+    *rhs = temp;
+}
+
+bool plot(Game* game, int x, int y) {
+    bool visible = game->map[y][x] > 0;
+    if (visible)
+        for (int xx = -1; xx < 2; ++xx)
+            for (int yy = -1; yy < 2; ++yy)
+                if (x + xx >= 0 && x + xx < MAP_WIDTH
+                    && y + yy >= 0 && y + yy < MAP_HEIGHT) game->los[y+yy][x+xx] = 1;
+    return visible;
+}
+
+void bresenham(Game* game, int x1, int y1, int x2, int y2) {
+
+    int dx = x2 - x1;
+    int ix = dx > 0 ? 1 : -1;
+    dx = 2 * abs(dx);
+
+    int dy = y2 - y1;
+    int iy = dy > 0 ? 1 : -1;
+    dy = 2 * abs(dy);
+
+    if (!plot(game, x1, y1)) return;
+
+    if (dx >= dy) {
+        int error = dy - dx / 2;
+
+        while (x1 != x2) {
+            if (error > 0 || (error == 0 && ix > 0)) {
+                error = error - dx;
+                y1 = y1 + iy;
+            }
+
+            error = error + dy;
+            x1 = x1 + ix;
+
+            if (!plot(game, x1, y1)) return;
+        }
+    } else {
+        int error = dx - dy / 2;
+
+        while (y1 != y2) {
+            if (error > 0 || (error == 0 && iy > 0)) {
+                error = error - dy;
+                x1 = x1 + ix;
+            }
+
+            error = error + dx;
+            y1 = y1 + iy;
+
+            if (!plot(game, x1, y1)) return;
+        }
+    }
+
+}
+
+void clearLOS(Game* game) {
+    for (int y = 0; y < MAP_HEIGHT; ++y) {
+        for (int x = 0; x < MAP_WIDTH; ++x) {
+            game->los[y][x] = 0;
+        }
+    }
+}
+
+void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
+
+    clearLOS(game);
+
+    int hr = (int) floor((float) boxRadius / 2);
+
+    int xx = x - hr;
+    if (xx < 0) xx = 0;
+
+    int yy = y - hr;
+    if (yy < 0) yy = 0;
+
+    for (int ty = yy; ty < y + hr; ty++) {
+        for (int tx = xx; tx < x + hr; tx++) {
+            bresenham(game, x, y, tx, ty);
+            // line(game, x, y, tx, ty);
+        }
+    }
+
+}
+
+void movePlayer(Game* game, int dx, int dy) {
+
+    game->player.coord.x += dx;
+    game->player.coord.y += dy;
+
+    calcLOS(game, game->player.coord.x, game->player.coord.y, 20);
 
 }
 
@@ -260,6 +377,8 @@ int main() {
     Game game = {0};
     initPlayer(&game.player);
     generateMap(&game);
+    game.useLOS = true;
+    calcLOS(&game, game.player.coord.x, game.player.coord.y, game.player.visionRadius);
 
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "hello world");
     SetTargetFPS(60);
@@ -273,37 +392,40 @@ int main() {
     printf("font size: %d\n", game.mapFontSize);
     printf("font height: %d\n", game.mapFont.baseSize);
 
-    for (int i = 0; i < 512; ++i) {
-
-        int ch = codepoints[i];
-        char tempBuf[2];
-        sprintf(tempBuf, "%c", ch);
-        Vector2 charSize = MeasureTextEx(game.mapFont, tempBuf, game.mapFontSize, 1);
-        printf("%c %dx%d\n", ch, (int) charSize.x, (int) charSize.y);
-
-    }
+    // for (int i = 0; i < 512; ++i) {
+    //     int ch = codepoints[i];
+    //     char tempBuf[2];
+    //     sprintf(tempBuf, "%c", ch);
+    //     Vector2 charSize = MeasureTextEx(game.mapFont, tempBuf, game.mapFontSize, 1);
+    //     printf("%c %dx%d\n", ch, (int) charSize.x, (int) charSize.y);
+    // }
 
     while (!WindowShouldClose()) {
 
         BeginDrawing();
 
-        if (IsKeyPressed(KEY_R)) generateMap(&game);
+        if (IsKeyPressed(KEY_R)) {
+            generateMap(&game);
+            calcLOS(&game, game.player.coord.x, game.player.coord.y, game.player.visionRadius);
+        }
 
-        if (IsKeyPressed(KEY_W)) game.player.coord.y--;
-        if (IsKeyPressed(KEY_S)) game.player.coord.y++;
-        if (IsKeyPressed(KEY_A)) game.player.coord.x--;
-        if (IsKeyPressed(KEY_D)) game.player.coord.x++;
+        if (IsKeyPressed(KEY_W)) movePlayer(&game, 0, -1);
+        if (IsKeyPressed(KEY_S)) movePlayer(&game, 0, 1);
+        if (IsKeyPressed(KEY_A)) movePlayer(&game, -1, 0);
+        if (IsKeyPressed(KEY_D)) movePlayer(&game, 1, 0);
+
+        if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
 
         ClearBackground(BLACK);
-
-        renderMap(&game);
-        renderActor(&game, &game.player);
 
         Vector2 halfWindowSize = {(float) WINDOW_WIDTH / 2, (float) WINDOW_HEIGHT / 2};
         // game.camera.position = Vector2Subtract(game.player.glyph.position, halfWindowSize);
 
         game.camera.target = Vector2Subtract(game.player.glyph.position, halfWindowSize);
         game.camera.position = Vector2Lerp(game.camera.position, game.camera.target, 0.05f);
+
+        renderMap(&game);
+        renderActor(&game, &game.player);
 
         DrawFPS(10, 10);
 
@@ -313,3 +435,4 @@ int main() {
     CloseWindow();
     return 0;
 }
+
