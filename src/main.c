@@ -409,10 +409,10 @@ int main() {
             calcLOS(&game, game.player.coord.x, game.player.coord.y, game.player.visionRadius);
         }
 
-        if (IsKeyPressed(KEY_W)) movePlayer(&game, 0, -1);
-        if (IsKeyPressed(KEY_S)) movePlayer(&game, 0, 1);
-        if (IsKeyPressed(KEY_A)) movePlayer(&game, -1, 0);
-        if (IsKeyPressed(KEY_D)) movePlayer(&game, 1, 0);
+        if (IsKeyPressed(KEY_W) || IsKeyPressedRepeat(KEY_W)) movePlayer(&game, 0, -1);
+        if (IsKeyPressed(KEY_S) || IsKeyPressedRepeat(KEY_S)) movePlayer(&game, 0, 1);
+        if (IsKeyPressed(KEY_A) || IsKeyPressedRepeat(KEY_A)) movePlayer(&game, -1, 0);
+        if (IsKeyPressed(KEY_D) || IsKeyPressedRepeat(KEY_D)) movePlayer(&game, 1, 0);
 
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
 
