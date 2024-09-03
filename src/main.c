@@ -1,3 +1,9 @@
+
+// TODO: factor out rendering code
+// TODO: factor out generation code
+// TODO: factor out LOS code
+// TODO: factor out Game structure and other common structures to .h file
+
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
