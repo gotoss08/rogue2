@@ -65,6 +65,7 @@ typedef struct {
 
     int map[MAP_HEIGHT][MAP_WIDTH];
     char los[MAP_HEIGHT][MAP_WIDTH];
+    char visited[MAP_HEIGHT][MAP_WIDTH];
 
     Actor player;
     Actor actors[1024];
@@ -80,6 +81,7 @@ void generateMap(Game* game) {
         for (size_t x = 0; x < MAP_WIDTH; ++x) {
             game->map[y][x] = 0;
             game->los[y][x] = 0;
+            game->visited[y][x] = 0;
         }
     }
 
@@ -228,7 +230,10 @@ void renderMap(Game* game) {
     for (size_t y = 0; y < MAP_HEIGHT; ++y) {
         for (size_t x = 0; x < MAP_WIDTH; ++x) {
 
-            if (game->useLOS && game->los[y][x] == 0) continue;
+            float alpha = 1.0f;
+
+            if (game->useLOS && !game->los[y][x] && !game->visited[y][x]) continue;
+            if (!game->los[y][x] && game->visited[y][x]) alpha = 0.05f;
 
             int glyphX = (x * cellSize - game->camera.position.x);
             int glyphY = (y * cellSize - game->camera.position.y);
@@ -236,11 +241,11 @@ void renderMap(Game* game) {
             Vector2 renderPos = { glyphX, glyphY };
 
             if (game->map[y][x] == 1)
-                DrawTextEx(game->mapFont, ".", renderPos, MAP_FONT_SIZE, 1, YELLOW);
+                DrawTextEx(game->mapFont, ".", renderPos, MAP_FONT_SIZE, 1, Fade(YELLOW, alpha));
             else if (game->map[y][x] == 2)
-                DrawTextEx(game->mapFont, ".", renderPos, MAP_FONT_SIZE, 1, DARKGRAY);
+                DrawTextEx(game->mapFont, ".", renderPos, MAP_FONT_SIZE, 1, Fade(DARKGRAY, alpha));
             else
-                DrawTextEx(game->mapFont, "#", renderPos, MAP_FONT_SIZE, 1, WHITE);
+                DrawTextEx(game->mapFont, "#", renderPos, MAP_FONT_SIZE, 1, Fade(WHITE, alpha));
 
         }
     }
@@ -295,8 +300,11 @@ bool plot(Game* game, int x, int y) {
                 if (x + xx >= 0 && x + xx < MAP_WIDTH
                     && y + yy >= 0 && y + yy < MAP_HEIGHT) {
 
-                    game->los[y+yy][x+xx] = 1;
-                    // game->visited
+                    int tileX = x + xx;
+                    int tileY = y + yy;
+
+                    game->los[tileY][tileX] = 1;
+                    game->visited[tileY][tileX] = 1;
 
                 }
     return isVisible;
