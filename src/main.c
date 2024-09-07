@@ -163,8 +163,8 @@ void generateMap(Game* game) {
            int roomEndY = roomStartY + roomHeight;
            if (roomEndY >= MAP_HEIGHT) roomEndY = MAP_HEIGHT - 1;
 
-           for (size_t roomY = roomStartY; roomY <= roomEndY; ++roomY) {
-               for (size_t roomX = roomStartX; roomX <= roomEndX; ++roomX) {
+           for (int roomY = roomStartY; roomY <= roomEndY; ++roomY) {
+               for (int roomX = roomStartX; roomX <= roomEndX; ++roomX) {
                    game->map[roomY][roomX] = 2;
                }
            }
@@ -195,7 +195,7 @@ void generateMap(Game* game) {
         int roomW = rooms[i * 4 + 2] - roomX;
         int roomH = rooms[i * 4 + 3] - roomY;
 
-        // printf("generated room %zu: %dx%d\n", i, roomW, roomH);
+        printf("generated room %zu: %dx%d\n", i, roomW, roomH);
 
     }
 
@@ -248,7 +248,7 @@ void renderMap(Game* game) {
 }
 
 void updateActors(Game* game) {
-
+    (void) game;
 }
 
 void renderActor(Game* game, Actor* actor) {
@@ -278,20 +278,28 @@ void initPlayer(Actor* player) {
     player->visionRadius = 20;
 
 }
-void swap(int *lhs, int *rhs) {
-    int temp = *lhs;
-    *lhs = *rhs;
-    *rhs = temp;
+
+void clearLOS(Game* game) {
+    for (int y = 0; y < MAP_HEIGHT; ++y) {
+        for (int x = 0; x < MAP_WIDTH; ++x) {
+            game->los[y][x] = 0;
+        }
+    }
 }
 
 bool plot(Game* game, int x, int y) {
-    bool visible = game->map[y][x] > 0;
-    if (visible)
+    bool isVisible = game->map[y][x] > 0;
+    if (isVisible)
         for (int xx = -1; xx < 2; ++xx)
             for (int yy = -1; yy < 2; ++yy)
                 if (x + xx >= 0 && x + xx < MAP_WIDTH
-                    && y + yy >= 0 && y + yy < MAP_HEIGHT) game->los[y+yy][x+xx] = 1;
-    return visible;
+                    && y + yy >= 0 && y + yy < MAP_HEIGHT) {
+
+                    game->los[y+yy][x+xx] = 1;
+                    // game->visited
+
+                }
+    return isVisible;
 }
 
 void bresenham(Game* game, int x1, int y1, int x2, int y2) {
@@ -338,14 +346,6 @@ void bresenham(Game* game, int x1, int y1, int x2, int y2) {
 
 }
 
-void clearLOS(Game* game) {
-    for (int y = 0; y < MAP_HEIGHT; ++y) {
-        for (int x = 0; x < MAP_WIDTH; ++x) {
-            game->los[y][x] = 0;
-        }
-    }
-}
-
 void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
 
     clearLOS(game);
@@ -361,7 +361,6 @@ void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
     for (int ty = yy; ty < y + hr; ty++) {
         for (int tx = xx; tx < x + hr; tx++) {
             bresenham(game, x, y, tx, ty);
-            // line(game, x, y, tx, ty);
         }
     }
 
@@ -372,11 +371,14 @@ void movePlayer(Game* game, int dx, int dy) {
     game->player.coord.x += dx;
     game->player.coord.y += dy;
 
-    calcLOS(game, game->player.coord.x, game->player.coord.y, 20);
+    calcLOS(game, game->player.coord.x, game->player.coord.y, game->player.visionRadius);
 
 }
 
-int main() {
+int main(int argc, char** argv) {
+
+    (void) argc;
+    (void) argv;
 
     SetRandomSeed(time(NULL));
 
