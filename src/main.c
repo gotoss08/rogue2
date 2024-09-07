@@ -47,9 +47,10 @@ typedef struct {
     char ch;
     Color fgColor;
     Color bgColor;
+
+    bool animateMovement;
     Vector2 position;
     Vector2 velocity;
-    float speed;
 } Glyph;
 
 typedef struct {
@@ -442,6 +443,29 @@ void generateMap(Game* game, int width, int height) {
 
 }
 
+void updateActors(Game* game) {
+    (void) game;
+}
+
+void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
+
+    int cellSize = game->cellSize;
+    char chBuffer[2] = {glyph->ch}; // because DrawTextEx requires char*
+
+    Vector2 targetPosition = coord2vector(game, coord);
+
+    if (glyph->animateMovement)
+        glyph->position = Vector2Lerp(glyph->position, targetPosition, LERPING_FACTOR(0.1f));
+    else
+        glyph->position = targetPosition;
+
+    Vector2 chRenderingPosition = vector2screen(game, glyph->position);
+
+    DrawRectangle(chRenderingPosition.x, chRenderingPosition.y, cellSize, cellSize, glyph->bgColor);
+    DrawTextEx(game->mapFont, chBuffer, chRenderingPosition, game->mapFontSize, 1, glyph->fgColor);
+
+}
+
 void renderMap(Game* game) {
     for (int y = 0; y < game->map.height; ++y) {
         for (int x = 0; x < game->map.width; ++x) {
@@ -453,35 +477,23 @@ void renderMap(Game* game) {
             if (game->useLOS && !t->isInLOS && !t->isVisited) continue;
             if (!t->isInLOS && t->isVisited) alpha = 0.05f;
 
-            int glyphX = (x * game->cellSize - game->camera.position.x);
-            int glyphY = (y * game->cellSize - game->camera.position.y);
+            t->glyph.fgColor = Fade(t->glyph.fgColor, alpha);
+            renderGlyph(game, (Coord) {x, y}, &t->glyph);
 
-            Vector2 renderPos = { glyphX, glyphY };
+            // int glyphX = (x * game->cellSize - game->camera.position.x);
+            // int glyphY = (y * game->cellSize - game->camera.position.y);
 
-            char chBuffer[2] = {t->glyph.ch};
-            DrawTextEx(game->mapFont, chBuffer, renderPos, game->mapFontSize, 1, Fade(t->glyph.fgColor, alpha));
+            // Vector2 renderPos = { glyphX, glyphY };
+
+            // char chBuffer[2] = {t->glyph.ch};
+            // DrawTextEx(game->mapFont, chBuffer, renderPos, game->mapFontSize, 1, Fade(t->glyph.fgColor, alpha));
 
         }
     }
 }
 
-void updateActors(Game* game) {
-    (void) game;
-}
-
 void renderActor(Game* game, Actor* actor) {
-
-    int cellSize = game->cellSize;
-    char chBuffer[2] = {actor->glyph.ch}; // because DrawTextEx requires char*
-
-    Vector2 targetPosition = coord2vector(game, actor->coord);
-    actor->glyph.position = Vector2Lerp(actor->glyph.position, targetPosition, LERPING_FACTOR(0.1f));
-
-    Vector2 chRenderingPosition = vector2screen(game, actor->glyph.position);
-
-    DrawRectangle(chRenderingPosition.x, chRenderingPosition.y, cellSize, cellSize, actor->glyph.bgColor);
-    DrawTextEx(game->mapFont, chBuffer, chRenderingPosition, game->mapFontSize, 1, actor->glyph.fgColor);
-
+    renderGlyph(game, actor->coord, &actor->glyph);
 }
 
 bool moveActor(Game* game, Actor* actor, int dx, int dy) {
@@ -507,7 +519,7 @@ void initPlayer(Actor* player) {
     player->glyph.ch = '@';
     player->glyph.fgColor = WHITE;
     player->glyph.bgColor = BLACK;
-    player->glyph.speed = 10;
+    player->glyph.animateMovement = true;
     player->visionRadius = 20;
 
 }
