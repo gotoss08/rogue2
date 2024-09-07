@@ -116,6 +116,9 @@ Vector2 vector2screen(Game* game, Vector2 vector) {
     return Vector2Subtract(vector, game->camera.position);
 }
 
+// TODO: implement screen2vector and vector2coord functions
+// TODO: implement current tile selection using mouse
+
 void cameraPosition(Game* game, Vector2 position) {
     Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
     game->camera.position = Vector2Subtract(position, halfWindowSize);
@@ -449,6 +452,8 @@ void updateActors(Game* game) {
 
 void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
 
+    // TODO: render chars in the middle of background rect
+
     int cellSize = game->cellSize;
     char chBuffer[2] = {glyph->ch}; // because DrawTextEx requires char*
 
@@ -475,7 +480,7 @@ void renderMap(Game* game) {
             Tile* t = getMapTile(&game->map, x, y);
 
             if (game->useLOS && !t->isInLOS && !t->isVisited) continue;
-            if (!t->isInLOS && t->isVisited) alpha = 0.05f;
+            if (!t->isInLOS && t->isVisited) alpha = 0.05f; // TODO: factor out faded alpha const
 
             t->glyph.fgColor = Fade(t->glyph.fgColor, alpha);
             renderGlyph(game, (Coord) {x, y}, &t->glyph);
@@ -601,6 +606,8 @@ int main(int argc, char** argv) {
         }
 
         BeginDrawing();
+
+        // TODO: write custom keys handling and mapping function
 
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
