@@ -12,10 +12,15 @@
 #include <raylib.h>
 #include <raymath.h>
 
-#define dbg_dec(x) printf("DEBUG: [%s] = %d\n", #x, x)
+#define dbg_num(x) printf("DEBUG: [%s] = %d\n", #x, x)
+#define dbg_str(x) printf("DEBUG: [%s] = %s\n", #x, x)
 
 #define WINDOW_WIDTH 1280
 #define WINDOW_HEIGHT 720
+
+#define NORMAL_FPS 60
+#define TARGET_FPS 144
+#define LERPING_FACTOR(x) x * ((float) NORMAL_FPS / (float) TARGET_FPS)
 
 #define MAP_FONT_SIZE 32
 
@@ -59,10 +64,14 @@ typedef struct {
 
 typedef struct {
 
+    int windowWidth;
+    int windowHeight;
+
     Font mapFont;
     int mapFontSize;
     GameCamera camera;
 
+    int cellSize;
     int map[MAP_HEIGHT][MAP_WIDTH];
     char los[MAP_HEIGHT][MAP_WIDTH];
     char visited[MAP_HEIGHT][MAP_WIDTH];
@@ -74,6 +83,123 @@ typedef struct {
     bool useLOS;
 
 } Game;
+
+Vector2 coord2vector(Game* game, Coord coord) {
+    return (Vector2) {coord.x * game->cellSize, coord.y * game->cellSize};
+}
+
+Vector2 coord2screen(Game* game, Coord coord) {
+    return Vector2Subtract(coord2vector(game, coord), game->camera.position);
+}
+
+Vector2 vector2screen(Game* game, Vector2 vector) {
+    return Vector2Subtract(vector, game->camera.position);
+}
+
+void clearLOS(Game* game) {
+    for (int y = 0; y < MAP_HEIGHT; ++y) {
+        for (int x = 0; x < MAP_WIDTH; ++x) {
+            game->los[y][x] = 0;
+        }
+    }
+}
+
+bool plot(Game* game, int x, int y) {
+    bool isVisible = game->map[y][x] > 0;
+    if (isVisible)
+        for (int xx = -1; xx < 2; ++xx)
+            for (int yy = -1; yy < 2; ++yy)
+                if (x + xx >= 0 && x + xx < MAP_WIDTH
+                    && y + yy >= 0 && y + yy < MAP_HEIGHT) {
+
+                    int tileX = x + xx;
+                    int tileY = y + yy;
+
+                    game->los[tileY][tileX] = 1;
+                    game->visited[tileY][tileX] = 1;
+
+                }
+    return isVisible;
+}
+
+void bresenham(Game* game, int x1, int y1, int x2, int y2) {
+
+    int dx = x2 - x1;
+    int ix = dx > 0 ? 1 : -1;
+    dx = 2 * abs(dx);
+
+    int dy = y2 - y1;
+    int iy = dy > 0 ? 1 : -1;
+    dy = 2 * abs(dy);
+
+    if (!plot(game, x1, y1)) return;
+
+    if (dx >= dy) {
+        int error = dy - dx / 2;
+
+        while (x1 != x2) {
+            if (error > 0 || (error == 0 && ix > 0)) {
+                error = error - dx;
+                y1 = y1 + iy;
+            }
+
+            error = error + dy;
+            x1 = x1 + ix;
+
+            if (!plot(game, x1, y1)) return;
+        }
+    } else {
+        int error = dx - dy / 2;
+
+        while (y1 != y2) {
+            if (error > 0 || (error == 0 && iy > 0)) {
+                error = error - dy;
+                x1 = x1 + ix;
+            }
+
+            error = error + dx;
+            y1 = y1 + iy;
+
+            if (!plot(game, x1, y1)) return;
+        }
+    }
+
+}
+
+void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
+
+    clearLOS(game);
+
+    int hr = (int) floor((float) boxRadius / 2);
+
+    int xx = x - hr;
+    if (xx < 0) xx = 0;
+
+    int yy = y - hr;
+    if (yy < 0) yy = 0;
+
+    for (int ty = yy; ty < y + hr; ty++) {
+        for (int tx = xx; tx < x + hr; tx++) {
+            bresenham(game, x, y, tx, ty);
+        }
+    }
+
+}
+
+void cameraPosition(Game* game, Vector2 position) {
+    Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
+    game->camera.position = Vector2Subtract(position, halfWindowSize);
+    game->camera.target = game->camera.position;
+}
+
+void cameraTarget(Game* game, Vector2 target) {
+    Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
+    game->camera.target = Vector2Subtract(target, halfWindowSize);
+}
+
+void cameraUpdate(Game* game) {
+    game->camera.position = Vector2Lerp(game->camera.position, game->camera.target, LERPING_FACTOR(0.05f));
+}
 
 void generateMap(Game* game) {
 
@@ -213,6 +339,13 @@ void generateMap(Game* game) {
     game->player.coord.x = px;
     game->player.coord.y = py;
 
+    game->player.glyph.position = coord2vector(game, game->player.coord);
+
+    cameraPosition(game, game->player.glyph.position);
+    cameraTarget(game, game->player.glyph.position);
+
+    calcLOS(game, game->player.coord.x, game->player.coord.y, game->player.visionRadius);
+
     // place walls at map edges
 
     for (size_t y = 0; y < MAP_HEIGHT; ++y) {
@@ -225,8 +358,6 @@ void generateMap(Game* game) {
 
 void renderMap(Game* game) {
 
-    int cellSize = game->mapFontSize;
-
     for (size_t y = 0; y < MAP_HEIGHT; ++y) {
         for (size_t x = 0; x < MAP_WIDTH; ++x) {
 
@@ -235,8 +366,8 @@ void renderMap(Game* game) {
             if (game->useLOS && !game->los[y][x] && !game->visited[y][x]) continue;
             if (!game->los[y][x] && game->visited[y][x]) alpha = 0.05f;
 
-            int glyphX = (x * cellSize - game->camera.position.x);
-            int glyphY = (y * cellSize - game->camera.position.y);
+            int glyphX = (x * game->cellSize - game->camera.position.x);
+            int glyphY = (y * game->cellSize - game->camera.position.y);
 
             Vector2 renderPos = { glyphX, glyphY };
 
@@ -258,19 +389,16 @@ void updateActors(Game* game) {
 
 void renderActor(Game* game, Actor* actor) {
 
-    int cellSize = game->mapFontSize;
+    int cellSize = game->cellSize;
+    char chBuffer[2] = {actor->glyph.ch}; // because DrawTextEx requires char*
 
-    Vector2 targetPosition = {actor->coord.x * cellSize, actor->coord.y * cellSize};
-    actor->glyph.position = targetPosition;
+    Vector2 targetPosition = coord2vector(game, actor->coord);
+    actor->glyph.position = Vector2Lerp(actor->glyph.position, targetPosition, LERPING_FACTOR(0.1f));
 
-    Vector2 bgRenderingPosition = Vector2Subtract(targetPosition, game->camera.position);
-    DrawRectangle(bgRenderingPosition.x, bgRenderingPosition.y, cellSize, cellSize, actor->glyph.bgColor);
+    Vector2 chRenderingPosition = vector2screen(game, actor->glyph.position);
 
-    Vector2 glyphRenderingPosition = Vector2Subtract(actor->glyph.position, game->camera.position);
-
-    char renderingCharBuffer[2];
-    sprintf(renderingCharBuffer, "%c", actor->glyph.ch);
-    DrawTextEx(game->mapFont, renderingCharBuffer, glyphRenderingPosition, game->mapFontSize, 1, actor->glyph.fgColor);
+    DrawRectangle(chRenderingPosition.x, chRenderingPosition.y, cellSize, cellSize, actor->glyph.bgColor);
+    DrawTextEx(game->mapFont, chBuffer, chRenderingPosition, game->mapFontSize, 1, actor->glyph.fgColor);
 
 }
 
@@ -281,96 +409,6 @@ void initPlayer(Actor* player) {
     player->glyph.bgColor = BLACK;
     player->glyph.speed = 10;
     player->visionRadius = 20;
-
-}
-
-void clearLOS(Game* game) {
-    for (int y = 0; y < MAP_HEIGHT; ++y) {
-        for (int x = 0; x < MAP_WIDTH; ++x) {
-            game->los[y][x] = 0;
-        }
-    }
-}
-
-bool plot(Game* game, int x, int y) {
-    bool isVisible = game->map[y][x] > 0;
-    if (isVisible)
-        for (int xx = -1; xx < 2; ++xx)
-            for (int yy = -1; yy < 2; ++yy)
-                if (x + xx >= 0 && x + xx < MAP_WIDTH
-                    && y + yy >= 0 && y + yy < MAP_HEIGHT) {
-
-                    int tileX = x + xx;
-                    int tileY = y + yy;
-
-                    game->los[tileY][tileX] = 1;
-                    game->visited[tileY][tileX] = 1;
-
-                }
-    return isVisible;
-}
-
-void bresenham(Game* game, int x1, int y1, int x2, int y2) {
-
-    int dx = x2 - x1;
-    int ix = dx > 0 ? 1 : -1;
-    dx = 2 * abs(dx);
-
-    int dy = y2 - y1;
-    int iy = dy > 0 ? 1 : -1;
-    dy = 2 * abs(dy);
-
-    if (!plot(game, x1, y1)) return;
-
-    if (dx >= dy) {
-        int error = dy - dx / 2;
-
-        while (x1 != x2) {
-            if (error > 0 || (error == 0 && ix > 0)) {
-                error = error - dx;
-                y1 = y1 + iy;
-            }
-
-            error = error + dy;
-            x1 = x1 + ix;
-
-            if (!plot(game, x1, y1)) return;
-        }
-    } else {
-        int error = dx - dy / 2;
-
-        while (y1 != y2) {
-            if (error > 0 || (error == 0 && iy > 0)) {
-                error = error - dy;
-                x1 = x1 + ix;
-            }
-
-            error = error + dx;
-            y1 = y1 + iy;
-
-            if (!plot(game, x1, y1)) return;
-        }
-    }
-
-}
-
-void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
-
-    clearLOS(game);
-
-    int hr = (int) floor((float) boxRadius / 2);
-
-    int xx = x - hr;
-    if (xx < 0) xx = 0;
-
-    int yy = y - hr;
-    if (yy < 0) yy = 0;
-
-    for (int ty = yy; ty < y + hr; ty++) {
-        for (int tx = xx; tx < x + hr; tx++) {
-            bresenham(game, x, y, tx, ty);
-        }
-    }
 
 }
 
@@ -390,23 +428,28 @@ int main(int argc, char** argv) {
 
     SetRandomSeed(time(NULL));
 
-    Game game = {0};
-    initPlayer(&game.player);
-    generateMap(&game);
-    game.useLOS = true;
-    calcLOS(&game, game.player.coord.x, game.player.coord.y, game.player.visionRadius);
+    SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
+    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "rogue v0.1");
+    SetTargetFPS(TARGET_FPS);
 
-    InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "hello world");
-    SetTargetFPS(60);
+    Game game = {0};
+    game.useLOS = true;
+    game.windowWidth = WINDOW_WIDTH;
+    game.windowHeight = WINDOW_HEIGHT;
 
     int codepoints[512] = { 0 };
     for (int i = 0; i < 95; i++) codepoints[i] = 32 + i;   // Basic ASCII characters
     for (int i = 0; i < 255; i++) codepoints[96 + i] = 0x0400 + i;   // Cyrillic characters
     game.mapFont = LoadFontEx("DejaVuSansMono.ttf", MAP_FONT_SIZE, codepoints, 512);
     game.mapFontSize = MAP_FONT_SIZE;
+    game.cellSize = MAP_FONT_SIZE;
 
-    printf("font size: %d\n", game.mapFontSize);
-    printf("font height: %d\n", game.mapFont.baseSize);
+    dbg_num(game.mapFontSize);
+    dbg_num(game.mapFont.baseSize);
+    dbg_num(game.cellSize);
+
+    initPlayer(&game.player);
+    generateMap(&game);
 
     // for (int i = 0; i < 512; ++i) {
     //     int ch = codepoints[i];
@@ -418,30 +461,28 @@ int main(int argc, char** argv) {
 
     while (!WindowShouldClose()) {
 
+        if (IsWindowResized()) {
+            game.windowWidth = GetScreenWidth();
+            game.windowHeight = GetScreenHeight();
+        }
+
         BeginDrawing();
 
-        if (IsKeyPressed(KEY_R)) {
-            generateMap(&game);
-            calcLOS(&game, game.player.coord.x, game.player.coord.y, game.player.visionRadius);
-        }
+        if (IsKeyPressed(KEY_R)) generateMap(&game);
+        if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
 
         if (IsKeyPressed(KEY_W) || IsKeyPressedRepeat(KEY_W)) movePlayer(&game, 0, -1);
         if (IsKeyPressed(KEY_S) || IsKeyPressedRepeat(KEY_S)) movePlayer(&game, 0, 1);
         if (IsKeyPressed(KEY_A) || IsKeyPressedRepeat(KEY_A)) movePlayer(&game, -1, 0);
         if (IsKeyPressed(KEY_D) || IsKeyPressedRepeat(KEY_D)) movePlayer(&game, 1, 0);
 
-        if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
-
         ClearBackground(BLACK);
-
-        Vector2 halfWindowSize = {(float) WINDOW_WIDTH / 2, (float) WINDOW_HEIGHT / 2};
-        // game.camera.position = Vector2Subtract(game.player.glyph.position, halfWindowSize);
-
-        game.camera.target = Vector2Subtract(game.player.glyph.position, halfWindowSize);
-        game.camera.position = Vector2Lerp(game.camera.position, game.camera.target, 0.05f);
 
         renderMap(&game);
         renderActor(&game, &game.player);
+
+        cameraTarget(&game, game.player.glyph.position);
+        cameraUpdate(&game);
 
         DrawFPS(10, 10);
 
