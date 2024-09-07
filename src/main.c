@@ -154,7 +154,16 @@ Tile* getMapTile(Map* map, int x, int y) {
     return &(map->tiles[y][x]);
 }
 
-bool isTileBlockingLOS(Tile* tile) {
+bool isTileBlocksLOS(Tile* tile) {
+    switch (tile->type) {
+    case Wall:
+        return true;
+    default:
+        return false;
+    }
+}
+
+bool isTileBlocksMovement(Tile* tile) {
     switch (tile->type) {
     case Wall:
         return true;
@@ -174,7 +183,7 @@ bool plot(Game* game, int x, int y) {
     if (x < 0 || x >= game->map.width || y < 0 || y >= game->map.height)
         return false;
 
-    bool isVisible = !isTileBlockingLOS(getMapTile(&game->map, x, y));
+    bool isVisible = !isTileBlocksLOS(getMapTile(&game->map, x, y));
 
     if (isVisible)
         for (int xx = -1; xx <= 1; xx++)
@@ -475,6 +484,24 @@ void renderActor(Game* game, Actor* actor) {
 
 }
 
+bool moveActor(Game* game, Actor* actor, int dx, int dy) {
+
+    int tx = actor->coord.x + dx;
+    int ty = actor->coord.y + dy;
+
+    if (tx < 0 || tx >= game->map.width || ty < 0 || ty >= game->map.height) return false;
+
+    Tile* tile = getMapTile(&game->map, tx, ty);
+
+    if (isTileBlocksMovement(tile)) return false;
+
+    actor->coord.x = tx;
+    actor->coord.y = ty;
+
+    return true;
+
+}
+
 void initPlayer(Actor* player) {
 
     player->glyph.ch = '@';
@@ -485,12 +512,34 @@ void initPlayer(Actor* player) {
 
 }
 
-void movePlayer(Game* game, int dx, int dy) {
+bool movePlayer(Game* game, int dx, int dy) {
 
-    game->player.coord.x += dx;
-    game->player.coord.y += dy;
+    if (moveActor(game, &game->player, dx, dy)) {
+        calcLOS(game, game->player.coord.x, game->player.coord.y, game->player.visionRadius);
+        return true;
+    }
 
-    calcLOS(game, game->player.coord.x, game->player.coord.y, game->player.visionRadius);
+    return false;
+
+}
+
+void longMovePlayer(Game* game, int dx, int dy) {
+
+    while (dx > 0) {
+        if (!movePlayer(game, 1, 0)) break;
+    }
+
+    while (dx < 0) {
+        if (!movePlayer(game, -1, 0)) break;
+    }
+
+    while (dy > 0) {
+        if (!movePlayer(game, 0, 1)) break;
+    }
+
+    while (dy < 0) {
+        if (!movePlayer(game, 0, -1)) break;
+    }
 
 }
 
@@ -545,9 +594,13 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
 
         if (IsKeyPressed(KEY_W) || IsKeyPressedRepeat(KEY_W)) movePlayer(&game, 0, -1);
+        if (IsKeyPressed(KEY_W) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, 0, -1);
         if (IsKeyPressed(KEY_S) || IsKeyPressedRepeat(KEY_S)) movePlayer(&game, 0, 1);
+        if (IsKeyPressed(KEY_S) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, 0, 1);
         if (IsKeyPressed(KEY_A) || IsKeyPressedRepeat(KEY_A)) movePlayer(&game, -1, 0);
+        if (IsKeyPressed(KEY_A) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, -1, 0);
         if (IsKeyPressed(KEY_D) || IsKeyPressedRepeat(KEY_D)) movePlayer(&game, 1, 0);
+        if (IsKeyPressed(KEY_D) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, 1, 0);
 
         ClearBackground(BLACK);
 
