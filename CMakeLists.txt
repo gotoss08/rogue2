@@ -3,10 +3,13 @@ project(rogue VERSION 0.1)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+add_compile_options(-Wall -Wextra -Werror -pedantic)
+
 file(GLOB SOURCES src/*.[c|cpp])
 
 add_executable(rogue)
 target_sources(rogue PUBLIC ${SOURCES})
+set_property(TARGET rogue PROPERTY C_STANDARD 11)
 
 IF (WIN32)
     set(RAYLIB_DIR c:/code/_libs/raylib-5.0_win64_mingw-w64)
@@ -17,3 +20,4 @@ ELSE()
     find_package(raylib REQUIRED)
     target_link_libraries(rogue raylib)
 ENDIF()
+
