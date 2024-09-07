@@ -3,7 +3,7 @@ project(rogue VERSION 0.1)
 
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
-add_compile_options(-Wall -Wextra -Werror -pedantic)
+add_compile_options(-ggdb -Wall -Wextra -Werror -pedantic)
 
 file(GLOB SOURCES src/*.[c|cpp])
 
