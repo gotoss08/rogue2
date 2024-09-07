@@ -4,6 +4,7 @@
 // TODO: factor out LOS code
 // TODO: factor out Game structure and other common structures to .h file
 
+#include <stdlib.h>
 #include <math.h>
 #include <stddef.h>
 #include <stdio.h>
@@ -35,7 +36,7 @@
 #define ROOM_MAX_WIDTH 10
 #define ROOM_MIN_HEIGHT 3
 #define ROOM_MAX_HEIGHT 10
-#define MAX_ROOMS_COUNT (int)floor(((double)(MAP_WIDTH*MAP_HEIGHT)) / ((double)(ROOM_MIN_WIDTH*ROOM_MIN_HEIGHT)))
+#define MAX_ROOMS_COUNT(mapWidth, mapHeight) (int) floor(((double)(mapWidth*mapHeight)) / ((double)(ROOM_MIN_WIDTH*ROOM_MIN_HEIGHT)))
 
 typedef struct {
     int x;
@@ -57,6 +58,25 @@ typedef struct {
     int visionRadius;
 } Actor;
 
+typedef enum {
+    Empty,
+    Wall,
+    Floor,
+} TileType;
+
+typedef struct {
+    TileType type;
+    Glyph glyph;
+    bool isInLOS;
+    bool isVisited;
+} Tile;
+
+typedef struct {
+    int width;
+    int height;
+    Tile** tiles;
+} Map;
+
 typedef struct {
     Vector2 position;
     Vector2 target;
@@ -69,12 +89,11 @@ typedef struct {
 
     Font mapFont;
     int mapFontSize;
+    int cellSize;
+
     GameCamera camera;
 
-    int cellSize;
-    int map[MAP_HEIGHT][MAP_WIDTH];
-    char los[MAP_HEIGHT][MAP_WIDTH];
-    char visited[MAP_HEIGHT][MAP_WIDTH];
+    Map map;
 
     Actor player;
     Actor actors[1024];
@@ -96,30 +115,84 @@ Vector2 vector2screen(Game* game, Vector2 vector) {
     return Vector2Subtract(vector, game->camera.position);
 }
 
-void clearLOS(Game* game) {
-    for (int y = 0; y < MAP_HEIGHT; ++y) {
-        for (int x = 0; x < MAP_WIDTH; ++x) {
-            game->los[y][x] = 0;
-        }
+void cameraPosition(Game* game, Vector2 position) {
+    Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
+    game->camera.position = Vector2Subtract(position, halfWindowSize);
+    game->camera.target = game->camera.position;
+}
+
+void cameraTarget(Game* game, Vector2 target) {
+    Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
+    game->camera.target = Vector2Subtract(target, halfWindowSize);
+}
+
+void cameraUpdate(Game* game) {
+    game->camera.position = Vector2Lerp(game->camera.position, game->camera.target, LERPING_FACTOR(0.05f));
+}
+
+Tile createTile(TileType type) {
+    Tile t = {0};
+    t.type = type;
+    t.glyph.fgColor = WHITE;
+    t.glyph.bgColor = BLACK;
+
+    switch(type) {
+    case Wall:
+        t.glyph.ch = '#';
+        break;
+    case Floor:
+        t.glyph.ch = '.';
+        break;
+    default:
+        break;
+    }
+
+    return t;
+}
+
+Tile* getMapTile(Map* map, int x, int y) {
+    return &(map->tiles[y][x]);
+}
+
+bool isTileBlockingLOS(Tile* tile) {
+    switch (tile->type) {
+    case Wall:
+        return true;
+    default:
+        return false;
     }
 }
 
+void clearLOS(Game* game) {
+    for (int y = 0; y < game->map.height; ++y)
+        for (int x = 0; x < game->map.width; ++x)
+            getMapTile(&game->map, x, y)->isInLOS = false;
+}
+
 bool plot(Game* game, int x, int y) {
-    bool isVisible = game->map[y][x] > 0;
+
+    if (x < 0 || x >= game->map.width || y < 0 || y >= game->map.height)
+        return false;
+
+    bool isVisible = !isTileBlockingLOS(getMapTile(&game->map, x, y));
+
     if (isVisible)
-        for (int xx = -1; xx < 2; ++xx)
-            for (int yy = -1; yy < 2; ++yy)
-                if (x + xx >= 0 && x + xx < MAP_WIDTH
-                    && y + yy >= 0 && y + yy < MAP_HEIGHT) {
+        for (int xx = -1; xx <= 1; xx++)
+            for (int yy = -1; yy <= 1; yy++)
+                if (x + xx >= 0 && x + xx < game->map.width
+                    && y + yy >= 0 && y + yy < game->map.height) {
 
                     int tileX = x + xx;
                     int tileY = y + yy;
 
-                    game->los[tileY][tileX] = 1;
-                    game->visited[tileY][tileX] = 1;
+                    Tile* t = getMapTile(&game->map, tileX, tileY);
+                    t->isInLOS = true;
+                    t->isVisited = true;
 
                 }
+
     return isVisible;
+
 }
 
 void bresenham(Game* game, int x1, int y1, int x2, int y2) {
@@ -186,33 +259,31 @@ void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
 
 }
 
-void cameraPosition(Game* game, Vector2 position) {
-    Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
-    game->camera.position = Vector2Subtract(position, halfWindowSize);
-    game->camera.target = game->camera.position;
-}
+void generateMap(Game* game, int width, int height) {
 
-void cameraTarget(Game* game, Vector2 target) {
-    Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
-    game->camera.target = Vector2Subtract(target, halfWindowSize);
-}
+    if (game->map.width != 0) {
+        for (int y = 0; y < game->map.height; ++y) {
+            free(game->map.tiles[y]);
+        }
+        free(game->map.tiles);
+    }
 
-void cameraUpdate(Game* game) {
-    game->camera.position = Vector2Lerp(game->camera.position, game->camera.target, LERPING_FACTOR(0.05f));
-}
+    game->map.width = width;
+    game->map.height = height;
 
-void generateMap(Game* game) {
+    game->map.tiles = malloc(height * sizeof(Tile*));
+    for (int y = 0; y < height; ++y) {
+        game->map.tiles[y] = malloc(width * sizeof(Tile));
+    }
 
-    for (size_t y = 0; y < MAP_HEIGHT; ++y) {
-        for (size_t x = 0; x < MAP_WIDTH; ++x) {
-            game->map[y][x] = 0;
-            game->los[y][x] = 0;
-            game->visited[y][x] = 0;
+    for (int y = 0; y < height; ++y) {
+        for (int x = 0; x < width; ++x) {
+            *getMapTile(&game->map, x, y) = createTile(Wall);
         }
     }
 
-    int currentX = GetRandomValue(MAP_GENERATOR_BORDERS_PADDING, MAP_WIDTH - MAP_GENERATOR_BORDERS_PADDING);
-    int currentY = GetRandomValue(MAP_GENERATOR_BORDERS_PADDING, MAP_HEIGHT - MAP_GENERATOR_BORDERS_PADDING);
+    int currentX = GetRandomValue(MAP_GENERATOR_BORDERS_PADDING, game->map.width - MAP_GENERATOR_BORDERS_PADDING);
+    int currentY = GetRandomValue(MAP_GENERATOR_BORDERS_PADDING, game->map.height - MAP_GENERATOR_BORDERS_PADDING);
 
     bool updateDirection = true;
 
@@ -222,12 +293,12 @@ void generateMap(Game* game) {
     int steps = 0;
     int roomCooldown = 0;
 
-    int rooms[MAX_ROOMS_COUNT];
+    int rooms[MAX_ROOMS_COUNT(game->map.width, game->map.height)];
     size_t roomsCount = 0;
 
-    printf("map size: %dx%d\n", MAP_WIDTH, MAP_HEIGHT);
+    printf("map size: %dx%d\n", game->map.width, game->map.height);
     printf("min room size: %dx%d\n", ROOM_MIN_WIDTH, ROOM_MIN_HEIGHT);
-    printf("max possible rooms count: %d\n", MAX_ROOMS_COUNT);
+    printf("max possible rooms count: %d\n", MAX_ROOMS_COUNT(game->map.width, game->map.height));
 
     while(1) {
 
@@ -253,8 +324,8 @@ void generateMap(Game* game) {
         int nextX = currentX + directionX;
         int nextY = currentY + directionY;
 
-        if (nextX >= MAP_WIDTH - MAP_GENERATOR_BORDERS_PADDING || nextX < MAP_GENERATOR_BORDERS_PADDING
-            || nextY >= MAP_HEIGHT - MAP_GENERATOR_BORDERS_PADDING || nextY < MAP_GENERATOR_BORDERS_PADDING) {
+        if (nextX >= game->map.width - MAP_GENERATOR_BORDERS_PADDING || nextX < MAP_GENERATOR_BORDERS_PADDING
+            || nextY >= game->map.height - MAP_GENERATOR_BORDERS_PADDING || nextY < MAP_GENERATOR_BORDERS_PADDING) {
             updateDirection = true;
             continue;
         }
@@ -267,10 +338,12 @@ void generateMap(Game* game) {
         currentX = nextX;
         currentY = nextY;
 
-        bool isInRoom = (directionY != 0 && currentX + 1 < MAP_WIDTH && game->map[currentY][currentX + 1] != 0)
-            || (directionY != 0 && currentX - 1 >= 0 && game->map[currentY][currentX - 1] != 0)
-            || (directionX != 0 && currentY + 1 < MAP_HEIGHT && game->map[currentY + 1][currentX] != 0)
-            || (directionX != 0 && currentY - 1 >= 0 && game->map[currentY - 1][currentX] != 0);
+        Tile* currentTile = getMapTile(&game->map, currentX, currentY);
+
+        bool isInRoom = (directionY != 0 && currentX + 1 < game->map.width && getMapTile(&game->map, currentX + 1, currentY)->type != Wall)
+                        || (directionY != 0 && currentX - 1 >= 0 && getMapTile(&game->map, currentX - 1, currentY)->type != Wall)
+                        || (directionX != 0 && currentY + 1 < game->map.height && getMapTile(&game->map, currentX, currentY + 1)->type != Wall)
+                        || (directionX != 0 && currentY - 1 >= 0 && getMapTile(&game->map, currentX, currentY - 1)->type != Wall);
 
         if (!isInRoom && roomCooldown == 0 && GetRandomValue(0, 100) <= MAP_GENERATOR_STEP_ROOM_CHANCE) {
 
@@ -286,14 +359,18 @@ void generateMap(Game* game) {
            if (roomStartY < 0) roomStartY = 0;
 
            int roomEndX = roomStartX + roomWidth;
-           if (roomEndX >= MAP_WIDTH) roomEndX = MAP_WIDTH - 1;
+           if (roomEndX >= game->map.width) roomEndX = game->map.width - 1;
 
            int roomEndY = roomStartY + roomHeight;
-           if (roomEndY >= MAP_HEIGHT) roomEndY = MAP_HEIGHT - 1;
+           if (roomEndY >= game->map.height) roomEndY = game->map.height - 1;
 
            for (int roomY = roomStartY; roomY <= roomEndY; ++roomY) {
                for (int roomX = roomStartX; roomX <= roomEndX; ++roomX) {
-                   game->map[roomY][roomX] = 2;
+
+                   Tile* t = getMapTile(&game->map, roomX, roomY);
+                   *t = createTile(Floor);
+                   t->glyph.fgColor = DARKGRAY;
+
                }
            }
 
@@ -307,24 +384,32 @@ void generateMap(Game* game) {
 
         }
 
-        if (game->map[currentY][currentX] == 0)
-            game->map[currentY][currentX] = 1;
+        if (currentTile->type == Wall) {
+            *currentTile = createTile(Floor);
+            currentTile->glyph.fgColor = YELLOW;
+        }
 
         steps++;
         if (roomCooldown > 0) roomCooldown--;
 
     }
 
+    // for (size_t i = 0; i < roomsCount; ++i) {
+    //     int roomX = rooms[i * 4 + 0];
+    //     int roomY = rooms[i * 4 + 1];
+    //     int roomW = rooms[i * 4 + 2] - roomX;
+    //     int roomH = rooms[i * 4 + 3] - roomY;
+    //     printf("generated room %zu: %dx%d\n", i, roomW, roomH);
+    // }
 
-    for (size_t i = 0; i < roomsCount; ++i) {
+    // place walls at map edges
 
-        int roomX = rooms[i * 4 + 0];
-        int roomY = rooms[i * 4 + 1];
-        int roomW = rooms[i * 4 + 2] - roomX;
-        int roomH = rooms[i * 4 + 3] - roomY;
-
-        printf("generated room %zu: %dx%d\n", i, roomW, roomH);
-
+    for (int y = 0; y < game->map.height; ++y) {
+        for (int x = 0; x < game->map.width; ++x) {
+            if (y == 0 || y == game->map.height - 1 || x == 0 || x == game->map.width - 1) {
+                *getMapTile(&game->map, x, y) = createTile(Wall);
+            }
+        }
     }
 
     // place player at random room
@@ -334,11 +419,11 @@ void generateMap(Game* game) {
         size_t randomRoom = GetRandomValue(0, roomsCount);
         px = GetRandomValue(rooms[randomRoom + 0], rooms[randomRoom + 2]);
         py = GetRandomValue(rooms[randomRoom + 1], rooms[randomRoom + 3]);
-        if (game->map[py][px] > 0) break;
+        if (getMapTile(&game->map, px, py)->type != Wall) break;
     }
+
     game->player.coord.x = px;
     game->player.coord.y = py;
-
     game->player.glyph.position = coord2vector(game, game->player.coord);
 
     cameraPosition(game, game->player.glyph.position);
@@ -346,41 +431,29 @@ void generateMap(Game* game) {
 
     calcLOS(game, game->player.coord.x, game->player.coord.y, game->player.visionRadius);
 
-    // place walls at map edges
-
-    for (size_t y = 0; y < MAP_HEIGHT; ++y) {
-        for (size_t x = 0; x < MAP_WIDTH; ++x) {
-            if (y == 0 || y == MAP_HEIGHT - 1 || x == 0 || x == MAP_WIDTH - 1) game->map[y][x] = 0;
-        }
-    }
-
 }
 
 void renderMap(Game* game) {
-
-    for (size_t y = 0; y < MAP_HEIGHT; ++y) {
-        for (size_t x = 0; x < MAP_WIDTH; ++x) {
+    for (int y = 0; y < game->map.height; ++y) {
+        for (int x = 0; x < game->map.width; ++x) {
 
             float alpha = 1.0f;
 
-            if (game->useLOS && !game->los[y][x] && !game->visited[y][x]) continue;
-            if (!game->los[y][x] && game->visited[y][x]) alpha = 0.05f;
+            Tile* t = getMapTile(&game->map, x, y);
+
+            if (game->useLOS && !t->isInLOS && !t->isVisited) continue;
+            if (!t->isInLOS && t->isVisited) alpha = 0.05f;
 
             int glyphX = (x * game->cellSize - game->camera.position.x);
             int glyphY = (y * game->cellSize - game->camera.position.y);
 
             Vector2 renderPos = { glyphX, glyphY };
 
-            if (game->map[y][x] == 1)
-                DrawTextEx(game->mapFont, ".", renderPos, MAP_FONT_SIZE, 1, Fade(YELLOW, alpha));
-            else if (game->map[y][x] == 2)
-                DrawTextEx(game->mapFont, ".", renderPos, MAP_FONT_SIZE, 1, Fade(DARKGRAY, alpha));
-            else
-                DrawTextEx(game->mapFont, "#", renderPos, MAP_FONT_SIZE, 1, Fade(WHITE, alpha));
+            char chBuffer[2] = {t->glyph.ch};
+            DrawTextEx(game->mapFont, chBuffer, renderPos, game->mapFontSize, 1, Fade(t->glyph.fgColor, alpha));
 
         }
     }
-
 }
 
 void updateActors(Game* game) {
@@ -449,7 +522,7 @@ int main(int argc, char** argv) {
     dbg_num(game.cellSize);
 
     initPlayer(&game.player);
-    generateMap(&game);
+    generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
 
     // for (int i = 0; i < 512; ++i) {
     //     int ch = codepoints[i];
@@ -468,7 +541,7 @@ int main(int argc, char** argv) {
 
         BeginDrawing();
 
-        if (IsKeyPressed(KEY_R)) generateMap(&game);
+        if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
 
         if (IsKeyPressed(KEY_W) || IsKeyPressedRepeat(KEY_W)) movePlayer(&game, 0, -1);
