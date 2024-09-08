@@ -13,6 +13,9 @@
 #include <raylib.h>
 #include <raymath.h>
 
+#define EASING_IMPLEMENTATION
+#include "easing.h"
+
 #define dbg_num(x) printf("DEBUG: [%s] = %d\n", #x, x)
 #define dbg_str(x) printf("DEBUG: [%s] = %s\n", #x, x)
 
@@ -52,7 +55,7 @@ typedef struct {
 
     bool animateMovement;
     Vector2 position;
-    Vector2 velocity;
+    float animationTime;
 } Glyph;
 
 typedef struct {
@@ -104,6 +107,8 @@ typedef struct {
 
     bool useLOS;
 
+    float deltaTime;
+
 } Game;
 
 Vector2 coord2vector(Game* game, Coord coord) {
@@ -141,6 +146,7 @@ Tile createTile(TileType type) {
     t.type = type;
     t.glyph.fgColor = WHITE;
     t.glyph.bgColor = BLACK;
+    t.glyph.animateMovement = false;
 
     switch(type) {
     case Wall:
@@ -210,7 +216,17 @@ bool plot(Game* game, int x, int y) {
 
 }
 
-void bresenham(Game* game, int x1, int y1, int x2, int y2) {
+bool alwaysTruePlot(Game* game, int x, int y) {
+
+    Tile* t = getMapTile(&game->map, x, y);
+    t->isInLOS = true;
+    t->isVisited = true;
+
+    return true;
+
+}
+
+void bresenham(Game* game, int x1, int y1, int x2, int y2, bool (*plot) (Game* game, int x, int y)) {
 
     int dx = x2 - x1;
     int ix = dx > 0 ? 1 : -1;
@@ -268,7 +284,7 @@ void calcLOS(Game* game, const int x, const int y, const int boxRadius) {
 
     for (int ty = yy; ty < y + hr; ty++) {
         for (int tx = xx; tx < x + hr; tx++) {
-            bresenham(game, x, y, tx, ty);
+            bresenham(game, x, y, tx, ty, &plot);
         }
     }
 
@@ -459,10 +475,10 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
 
     Vector2 chTargetPosition = coord2vector(game, coord);
 
-    if (glyph->animateMovement)
-        glyph->position = Vector2Lerp(glyph->position, chTargetPosition, LERPING_FACTOR(0.1f));
-    else
-        glyph->position = chTargetPosition;
+    if (glyph->animateMovement && !Vector2Equals(glyph->position, chTargetPosition)) {
+        glyph->position = Vector2Lerp(glyph->position, chTargetPosition, easeOutBack(glyph->animationTime));
+        glyph->animationTime += game->deltaTime;
+    } else glyph->position = chTargetPosition;
 
     Vector2 bgTargetPosition = glyph->position;
 
@@ -495,14 +511,6 @@ void renderMap(Game* game) {
             t->glyph.fgColor = Fade(t->glyph.fgColor, alpha);
             renderGlyph(game, (Coord) {x, y}, &t->glyph);
 
-            // int glyphX = (x * game->cellSize - game->camera.position.x);
-            // int glyphY = (y * game->cellSize - game->camera.position.y);
-
-            // Vector2 renderPos = { glyphX, glyphY };
-
-            // char chBuffer[2] = {t->glyph.ch};
-            // DrawTextEx(game->mapFont, chBuffer, renderPos, game->mapFontSize, 1, Fade(t->glyph.fgColor, alpha));
-
         }
     }
 }
@@ -524,6 +532,7 @@ bool moveActor(Game* game, Actor* actor, int dx, int dy) {
 
     actor->coord.x = tx;
     actor->coord.y = ty;
+    actor->glyph.animationTime = 0;
 
     return true;
 
@@ -535,6 +544,9 @@ void initPlayer(Actor* player) {
     player->glyph.fgColor = WHITE;
     player->glyph.bgColor = BLACK;
     player->glyph.animateMovement = true;
+    player->glyph.animationTime = 0;
+    // player->glyph.t = LERPING_FACTOR(0.5f);
+    // player->glyph.defaultT = player->glyph.t;
     player->visionRadius = 20;
 
 }
@@ -551,23 +563,7 @@ bool movePlayer(Game* game, int dx, int dy) {
 }
 
 void longMovePlayer(Game* game, int dx, int dy) {
-
-    while (dx > 0) {
-        if (!movePlayer(game, 1, 0)) break;
-    }
-
-    while (dx < 0) {
-        if (!movePlayer(game, -1, 0)) break;
-    }
-
-    while (dy > 0) {
-        if (!movePlayer(game, 0, 1)) break;
-    }
-
-    while (dy < 0) {
-        if (!movePlayer(game, 0, -1)) break;
-    }
-
+    while (movePlayer(game, dx, dy));
 }
 
 int main(int argc, char** argv) {
@@ -610,6 +606,8 @@ int main(int argc, char** argv) {
 
     while (!WindowShouldClose()) {
 
+        game.deltaTime = GetFrameTime();
+
         if (IsWindowResized()) {
             game.windowWidth = GetScreenWidth();
             game.windowHeight = GetScreenHeight();
@@ -622,14 +620,41 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
 
-        if (IsKeyPressed(KEY_W) || IsKeyPressedRepeat(KEY_W)) movePlayer(&game, 0, -1);
-        if (IsKeyPressed(KEY_W) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, 0, -1);
-        if (IsKeyPressed(KEY_S) || IsKeyPressedRepeat(KEY_S)) movePlayer(&game, 0, 1);
-        if (IsKeyPressed(KEY_S) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, 0, 1);
-        if (IsKeyPressed(KEY_A) || IsKeyPressedRepeat(KEY_A)) movePlayer(&game, -1, 0);
-        if (IsKeyPressed(KEY_A) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, -1, 0);
-        if (IsKeyPressed(KEY_D) || IsKeyPressedRepeat(KEY_D)) movePlayer(&game, 1, 0);
-        if (IsKeyPressed(KEY_D) && IsKeyDown(KEY_LEFT_SHIFT)) longMovePlayer(&game, 1, 0);
+        // up movement
+
+        if (IsKeyPressed(KEY_W) || IsKeyPressedRepeat(KEY_W))
+            movePlayer(&game, 0, -1);
+        if (!IsKeyPressed(KEY_W) && IsKeyPressedRepeat(KEY_W))
+            game.player.glyph.position = coord2vector(&game, game.player.coord);
+        if (IsKeyPressed(KEY_W) && IsKeyDown(KEY_LEFT_SHIFT))
+            longMovePlayer(&game, 0, -1);
+
+        // down movement
+
+        if (IsKeyPressed(KEY_S) || IsKeyPressedRepeat(KEY_S))
+            movePlayer(&game, 0, 1);
+        if (!IsKeyPressed(KEY_S) && IsKeyPressedRepeat(KEY_S))
+            game.player.glyph.position = coord2vector(&game, game.player.coord);
+        if (IsKeyPressed(KEY_S) && IsKeyDown(KEY_LEFT_SHIFT))
+            longMovePlayer(&game, 0, 1);
+
+        // left movement
+
+        if (IsKeyPressed(KEY_A) || IsKeyPressedRepeat(KEY_A))
+            movePlayer(&game, -1, 0);
+        if (!IsKeyPressed(KEY_A) && IsKeyPressedRepeat(KEY_A))
+            game.player.glyph.position = coord2vector(&game, game.player.coord);
+        if (IsKeyPressed(KEY_A) && IsKeyDown(KEY_LEFT_SHIFT))
+            longMovePlayer(&game, -1, 0);
+
+        // right movement
+
+        if (IsKeyPressed(KEY_D) || IsKeyPressedRepeat(KEY_D))
+            movePlayer(&game, 1, 0);
+        if (!IsKeyPressed(KEY_D) && IsKeyPressedRepeat(KEY_D))
+            game.player.glyph.position = coord2vector(&game, game.player.coord);
+        if (IsKeyPressed(KEY_D) && IsKeyDown(KEY_LEFT_SHIFT))
+            longMovePlayer(&game, 1, 0);
 
         ClearBackground(BLACK);
 
