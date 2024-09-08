@@ -38,6 +38,8 @@
 #define ROOM_MAX_HEIGHT 10
 #define MAX_ROOMS_COUNT(mapWidth, mapHeight) (int) floor(((double)(mapWidth*mapHeight)) / ((double)(ROOM_MIN_WIDTH*ROOM_MIN_HEIGHT)))
 
+#define RENDER_GLYPHS_CENTERED 0
+
 typedef struct {
     int x;
     int y;
@@ -452,21 +454,28 @@ void updateActors(Game* game) {
 
 void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
 
-    // TODO: render chars in the middle of background rect
-
     int cellSize = game->cellSize;
     char chBuffer[2] = {glyph->ch}; // because DrawTextEx requires char*
 
-    Vector2 targetPosition = coord2vector(game, coord);
+    Vector2 chTargetPosition = coord2vector(game, coord);
+    Vector2 bgTargetPosition = chTargetPosition;
+
+    if (RENDER_GLYPHS_CENTERED) {
+        GlyphInfo glyphInfo = GetGlyphInfo(game->mapFont, (int) glyph->ch);
+        Vector2 textSize = MeasureTextEx(game->mapFont, chBuffer, game->mapFontSize, 1);
+        chTargetPosition = Vector2Add(chTargetPosition, (Vector2) {(float) cellSize / 2 - (float) glyphInfo.offsetX / 2, (float) cellSize / 2 - (float) glyphInfo.offsetY / 2});
+        chTargetPosition = Vector2Subtract(chTargetPosition, Vector2Scale(textSize, 0.5));
+    }
 
     if (glyph->animateMovement)
-        glyph->position = Vector2Lerp(glyph->position, targetPosition, LERPING_FACTOR(0.1f));
+        glyph->position = Vector2Lerp(glyph->position, chTargetPosition, LERPING_FACTOR(0.1f));
     else
-        glyph->position = targetPosition;
+        glyph->position = chTargetPosition;
 
     Vector2 chRenderingPosition = vector2screen(game, glyph->position);
+    Vector2 bgRenderingPosition = vector2screen(game, bgTargetPosition);
 
-    DrawRectangle(chRenderingPosition.x, chRenderingPosition.y, cellSize, cellSize, glyph->bgColor);
+    DrawRectangle(bgRenderingPosition.x, bgRenderingPosition.y, cellSize, cellSize, glyph->bgColor);
     DrawTextEx(game->mapFont, chBuffer, chRenderingPosition, game->mapFontSize, 1, glyph->fgColor);
 
 }
