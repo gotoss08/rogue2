@@ -458,7 +458,13 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
     char chBuffer[2] = {glyph->ch}; // because DrawTextEx requires char*
 
     Vector2 chTargetPosition = coord2vector(game, coord);
-    Vector2 bgTargetPosition = chTargetPosition;
+
+    if (glyph->animateMovement)
+        glyph->position = Vector2Lerp(glyph->position, chTargetPosition, LERPING_FACTOR(0.1f));
+    else
+        glyph->position = chTargetPosition;
+
+    Vector2 bgTargetPosition = glyph->position;
 
     if (RENDER_GLYPHS_CENTERED) {
         GlyphInfo glyphInfo = GetGlyphInfo(game->mapFont, (int) glyph->ch);
@@ -466,11 +472,6 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
         chTargetPosition = Vector2Add(chTargetPosition, (Vector2) {(float) cellSize / 2 - (float) glyphInfo.offsetX / 2, (float) cellSize / 2 - (float) glyphInfo.offsetY / 2});
         chTargetPosition = Vector2Subtract(chTargetPosition, Vector2Scale(textSize, 0.5));
     }
-
-    if (glyph->animateMovement)
-        glyph->position = Vector2Lerp(glyph->position, chTargetPosition, LERPING_FACTOR(0.1f));
-    else
-        glyph->position = chTargetPosition;
 
     Vector2 chRenderingPosition = vector2screen(game, glyph->position);
     Vector2 bgRenderingPosition = vector2screen(game, bgTargetPosition);
