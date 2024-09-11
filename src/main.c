@@ -109,6 +109,7 @@ typedef struct {
 
     float deltaTime;
     Vector2 mouse;
+    Coord mouseCoord;
 
 } Game;
 
@@ -511,6 +512,8 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
 
 }
 
+// TODO: add Map* as argument to renderMap()
+
 void renderMap(Game* game) {
     for (int y = 0; y < game->map.height; ++y) {
         for (int x = 0; x < game->map.width; ++x) {
@@ -531,6 +534,53 @@ void renderMap(Game* game) {
 
 void renderActor(Game* game, Actor* actor) {
     renderGlyph(game, actor->coord, &actor->glyph);
+}
+
+void renderText(Game* game, Vector2 position, const char* text, Color fgColor, Color bgColor) {
+
+    Vector2 textSize = MeasureTextEx(game->mapFont, text, game->mapFontSize, 1);
+
+    DrawRectangle(position.x, position.y, textSize.x, textSize.y, bgColor);
+    DrawTextEx(game->mapFont, text, position, game->mapFontSize, 1, fgColor);
+
+}
+
+void renderCurrentTileInfo(Game* game) {
+
+    if (checkMapBounds(&game->map, game->mouseCoord.x, game->mouseCoord.y)) {
+
+        Vector2 hoverPosition = coord2screen(game, game->mouseCoord);
+        DrawRectangleLines(hoverPosition.x, hoverPosition.y, game->cellSize, game->cellSize, YELLOW);
+
+        Tile* t = mapGetTile(&game->map, game->mouseCoord.x, game->mouseCoord.y);
+
+        char* tileTypeText;
+        switch(t->type) {
+        case TileTypeEmpty:
+            tileTypeText = "Empty";
+            break;
+        case TileTypeWall:
+            tileTypeText = "Wall";
+            break;
+        case TileTypeFloor:
+            tileTypeText = "Floor";
+            break;
+        default:
+            tileTypeText = "<Unknown>";
+            break;
+        }
+
+        const char* currentTileText = TextFormat("Tile: type - %s, glyph - %c", tileTypeText, t->glyph.ch);
+        renderText(game, (Vector2) {10, 50}, currentTileText, YELLOW, Fade(BLACK, 0.85f));
+
+    }
+
+}
+
+void renderUI(Game* game) {
+
+    renderCurrentTileInfo(game);
+
 }
 
 bool moveActor(Game* game, Actor* actor, int dx, int dy) {
@@ -672,40 +722,13 @@ int main(int argc, char** argv) {
 
         Vector2 mouse = GetMousePosition();
         game.mouse = mouse;
-        Coord mouseCoord = screen2coord(&game, mouse);
+        game.mouseCoord = screen2coord(&game, mouse);
 
         ClearBackground(BLACK);
 
         renderMap(&game);
         renderActor(&game, &game.player);
-
-        if (checkMapBounds(&game.map, mouseCoord.x, mouseCoord.y)) {
-
-            Vector2 hoverPosition = coord2screen(&game, mouseCoord);
-            DrawRectangleLines(hoverPosition.x, hoverPosition.y, game.cellSize, game.cellSize, YELLOW);
-
-            Tile* t = mapGetTile(&game.map, mouseCoord.x, mouseCoord.y);
-
-            char* tileTypeText;
-            switch(t->type) {
-            case TileTypeEmpty:
-                tileTypeText = "Empty";
-                break;
-            case TileTypeWall:
-                tileTypeText = "Wall";
-                break;
-            case TileTypeFloor:
-                tileTypeText = "Floor";
-                break;
-            default:
-                tileTypeText = "<Unknown>";
-                break;
-            }
-
-            const char* currentTileText = TextFormat("Tile: type - %s, glyph - %c", tileTypeText, t->glyph.ch);
-            DrawTextEx(game.mapFont, currentTileText, (Vector2) {10, 50}, game.mapFontSize, 1, YELLOW);
-
-        }
+        renderUI(&game);
 
         cameraTarget(&game, game.player.glyph.position);
         cameraUpdate(&game);
