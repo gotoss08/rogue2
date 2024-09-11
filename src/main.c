@@ -123,7 +123,18 @@ Vector2 vector2screen(Game* game, Vector2 vector) {
     return Vector2Subtract(vector, game->camera.position);
 }
 
-// TODO: implement screen2vector and vector2coord functions
+Vector2 screen2vector(Game* game, Vector2 screen) {
+    return Vector2Add(screen, game->camera.position);
+}
+
+Coord vector2coord(Game* game, Vector2 vector) {
+    return (Coord) {vector.x / game->cellSize, vector.y / game->cellSize};
+}
+
+Coord screen2coord(Game* game, Vector2 screen) {
+    return vector2coord(game, screen2vector(game, screen));
+}
+
 // TODO: implement current tile selection using mouse
 
 void cameraPosition(Game* game, Vector2 position) {
