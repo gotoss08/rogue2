@@ -23,7 +23,7 @@
 #define WINDOW_HEIGHT 720
 
 #define NORMAL_FPS 60
-#define TARGET_FPS 144
+#define TARGET_FPS 60
 #define LERPING_FACTOR(x) x * ((float) NORMAL_FPS / (float) TARGET_FPS)
 
 #define MAP_FONT_SIZE 32
@@ -63,6 +63,8 @@ typedef struct {
     Glyph glyph;
     int visionRadius;
 } Actor;
+
+// TODO: rename tile types with prefix TileType
 
 typedef enum {
     Empty,
@@ -108,6 +110,7 @@ typedef struct {
     bool useLOS;
 
     float deltaTime;
+    Vector2 mouse;
 
 } Game;
 
@@ -134,8 +137,6 @@ Coord vector2coord(Game* game, Vector2 vector) {
 Coord screen2coord(Game* game, Vector2 screen) {
     return vector2coord(game, screen2vector(game, screen));
 }
-
-// TODO: implement current tile selection using mouse
 
 void cameraPosition(Game* game, Vector2 position) {
     Vector2 halfWindowSize = {(float) game->windowWidth / 2, (float) game->windowHeight / 2};
@@ -172,6 +173,12 @@ Tile createTile(TileType type) {
 
     return t;
 }
+
+bool checkMapBounds(Map* map, int x, int y) {
+    return x >= 0 && x < map->width && y >= 0 && y < map->height;
+}
+
+// TODO: rename getMapTile -> mapGetTile
 
 Tile* getMapTile(Map* map, int x, int y) {
     return &(map->tiles[y][x]);
@@ -667,10 +674,42 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_D) && IsKeyDown(KEY_LEFT_SHIFT))
             longMovePlayer(&game, 1, 0);
 
+        Vector2 mouse = GetMousePosition();
+        game.mouse = mouse;
+        Coord mouseCoord = screen2coord(&game, mouse);
+
         ClearBackground(BLACK);
 
         renderMap(&game);
         renderActor(&game, &game.player);
+
+        if (checkMapBounds(&game.map, mouseCoord.x, mouseCoord.y)) {
+
+            Vector2 hoverPosition = coord2screen(&game, mouseCoord);
+            DrawRectangleLines(hoverPosition.x, hoverPosition.y, game.cellSize, game.cellSize, YELLOW);
+
+            Tile* t = getMapTile(&game.map, mouseCoord.x, mouseCoord.y);
+
+            char* tileTypeText;
+            switch(t->type) {
+            case Empty:
+                tileTypeText = "Empty";
+                break;
+            case Wall:
+                tileTypeText = "Wall";
+                break;
+            case Floor:
+                tileTypeText = "Floor";
+                break;
+            default:
+                tileTypeText = "<Unknown>";
+                break;
+            }
+
+            const char* currentTileText = TextFormat("Tile: type - %s, glyph - %c", tileTypeText, t->glyph.ch);
+            DrawTextEx(game.mapFont, currentTileText, (Vector2) {10, 50}, game.mapFontSize, 1, YELLOW);
+
+        }
 
         cameraTarget(&game, game.player.glyph.position);
         cameraUpdate(&game);
