@@ -64,12 +64,10 @@ typedef struct {
     int visionRadius;
 } Actor;
 
-// TODO: rename tile types with prefix TileType
-
 typedef enum {
-    Empty,
-    Wall,
-    Floor,
+    TileTypeEmpty = 0,
+    TileTypeWall,
+    TileTypeFloor,
 } TileType;
 
 typedef struct {
@@ -161,10 +159,10 @@ Tile createTile(TileType type) {
     t.glyph.animateMovement = false;
 
     switch(type) {
-    case Wall:
+    case TileTypeWall:
         t.glyph.ch = '#';
         break;
-    case Floor:
+    case TileTypeFloor:
         t.glyph.ch = '.';
         break;
     default:
@@ -186,7 +184,7 @@ Tile* getMapTile(Map* map, int x, int y) {
 
 bool isTileBlocksLOS(Tile* tile) {
     switch (tile->type) {
-    case Wall:
+    case TileTypeWall:
         return true;
     default:
         return false;
@@ -195,7 +193,7 @@ bool isTileBlocksLOS(Tile* tile) {
 
 bool isTileBlocksMovement(Tile* tile) {
     switch (tile->type) {
-    case Wall:
+    case TileTypeWall:
         return true;
     default:
         return false;
@@ -327,7 +325,7 @@ void generateMap(Game* game, int width, int height) {
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            *getMapTile(&game->map, x, y) = createTile(Wall);
+            *getMapTile(&game->map, x, y) = createTile(TileTypeWall);
         }
     }
 
@@ -389,10 +387,10 @@ void generateMap(Game* game, int width, int height) {
 
         Tile* currentTile = getMapTile(&game->map, currentX, currentY);
 
-        bool isInRoom = (directionY != 0 && currentX + 1 < game->map.width && getMapTile(&game->map, currentX + 1, currentY)->type != Wall)
-                        || (directionY != 0 && currentX - 1 >= 0 && getMapTile(&game->map, currentX - 1, currentY)->type != Wall)
-                        || (directionX != 0 && currentY + 1 < game->map.height && getMapTile(&game->map, currentX, currentY + 1)->type != Wall)
-                        || (directionX != 0 && currentY - 1 >= 0 && getMapTile(&game->map, currentX, currentY - 1)->type != Wall);
+        bool isInRoom = (directionY != 0 && currentX + 1 < game->map.width && getMapTile(&game->map, currentX + 1, currentY)->type != TileTypeWall)
+                        || (directionY != 0 && currentX - 1 >= 0 && getMapTile(&game->map, currentX - 1, currentY)->type != TileTypeWall)
+                        || (directionX != 0 && currentY + 1 < game->map.height && getMapTile(&game->map, currentX, currentY + 1)->type != TileTypeWall)
+                        || (directionX != 0 && currentY - 1 >= 0 && getMapTile(&game->map, currentX, currentY - 1)->type != TileTypeWall);
 
         if (!isInRoom && roomCooldown == 0 && GetRandomValue(0, 100) <= MAP_GENERATOR_STEP_ROOM_CHANCE) {
 
@@ -417,7 +415,7 @@ void generateMap(Game* game, int width, int height) {
                for (int roomX = roomStartX; roomX <= roomEndX; ++roomX) {
 
                    Tile* t = getMapTile(&game->map, roomX, roomY);
-                   *t = createTile(Floor);
+                   *t = createTile(TileTypeFloor);
                    t->glyph.fgColor = DARKGRAY;
 
                }
@@ -433,8 +431,8 @@ void generateMap(Game* game, int width, int height) {
 
         }
 
-        if (currentTile->type == Wall) {
-            *currentTile = createTile(Floor);
+        if (currentTile->type == TileTypeWall) {
+            *currentTile = createTile(TileTypeFloor);
             currentTile->glyph.fgColor = YELLOW;
         }
 
@@ -456,7 +454,7 @@ void generateMap(Game* game, int width, int height) {
     for (int y = 0; y < game->map.height; ++y) {
         for (int x = 0; x < game->map.width; ++x) {
             if (y == 0 || y == game->map.height - 1 || x == 0 || x == game->map.width - 1) {
-                *getMapTile(&game->map, x, y) = createTile(Wall);
+                *getMapTile(&game->map, x, y) = createTile(TileTypeWall);
             }
         }
     }
@@ -468,7 +466,7 @@ void generateMap(Game* game, int width, int height) {
         size_t randomRoom = GetRandomValue(0, roomsCount);
         px = GetRandomValue(rooms[randomRoom + 0], rooms[randomRoom + 2]);
         py = GetRandomValue(rooms[randomRoom + 1], rooms[randomRoom + 3]);
-        if (getMapTile(&game->map, px, py)->type != Wall) break;
+        if (getMapTile(&game->map, px, py)->type != TileTypeWall) break;
     }
 
     game->player.coord.x = px;
@@ -692,13 +690,13 @@ int main(int argc, char** argv) {
 
             char* tileTypeText;
             switch(t->type) {
-            case Empty:
+            case TileTypeEmpty:
                 tileTypeText = "Empty";
                 break;
-            case Wall:
+            case TileTypeWall:
                 tileTypeText = "Wall";
                 break;
-            case Floor:
+            case TileTypeFloor:
                 tileTypeText = "Floor";
                 break;
             default:
