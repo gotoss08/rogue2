@@ -176,9 +176,7 @@ bool checkMapBounds(Map* map, int x, int y) {
     return x >= 0 && x < map->width && y >= 0 && y < map->height;
 }
 
-// TODO: rename getMapTile -> mapGetTile
-
-Tile* getMapTile(Map* map, int x, int y) {
+Tile* mapGetTile(Map* map, int x, int y) {
     return &(map->tiles[y][x]);
 }
 
@@ -203,7 +201,7 @@ bool isTileBlocksMovement(Tile* tile) {
 void clearLOS(Game* game) {
     for (int y = 0; y < game->map.height; ++y)
         for (int x = 0; x < game->map.width; ++x)
-            getMapTile(&game->map, x, y)->isInLOS = false;
+            mapGetTile(&game->map, x, y)->isInLOS = false;
 }
 
 bool plot(Game* game, int x, int y) {
@@ -211,7 +209,7 @@ bool plot(Game* game, int x, int y) {
     if (x < 0 || x >= game->map.width || y < 0 || y >= game->map.height)
         return false;
 
-    bool isVisible = !isTileBlocksLOS(getMapTile(&game->map, x, y));
+    bool isVisible = !isTileBlocksLOS(mapGetTile(&game->map, x, y));
 
     if (isVisible)
         for (int xx = -1; xx <= 1; xx++)
@@ -222,7 +220,7 @@ bool plot(Game* game, int x, int y) {
                     int tileX = x + xx;
                     int tileY = y + yy;
 
-                    Tile* t = getMapTile(&game->map, tileX, tileY);
+                    Tile* t = mapGetTile(&game->map, tileX, tileY);
                     t->isInLOS = true;
                     t->isVisited = true;
 
@@ -234,7 +232,7 @@ bool plot(Game* game, int x, int y) {
 
 bool alwaysTruePlot(Game* game, int x, int y) {
 
-    Tile* t = getMapTile(&game->map, x, y);
+    Tile* t = mapGetTile(&game->map, x, y);
     t->isInLOS = true;
     t->isVisited = true;
 
@@ -325,7 +323,7 @@ void generateMap(Game* game, int width, int height) {
 
     for (int y = 0; y < height; ++y) {
         for (int x = 0; x < width; ++x) {
-            *getMapTile(&game->map, x, y) = createTile(TileTypeWall);
+            *mapGetTile(&game->map, x, y) = createTile(TileTypeWall);
         }
     }
 
@@ -385,12 +383,12 @@ void generateMap(Game* game, int width, int height) {
         currentX = nextX;
         currentY = nextY;
 
-        Tile* currentTile = getMapTile(&game->map, currentX, currentY);
+        Tile* currentTile = mapGetTile(&game->map, currentX, currentY);
 
-        bool isInRoom = (directionY != 0 && currentX + 1 < game->map.width && getMapTile(&game->map, currentX + 1, currentY)->type != TileTypeWall)
-                        || (directionY != 0 && currentX - 1 >= 0 && getMapTile(&game->map, currentX - 1, currentY)->type != TileTypeWall)
-                        || (directionX != 0 && currentY + 1 < game->map.height && getMapTile(&game->map, currentX, currentY + 1)->type != TileTypeWall)
-                        || (directionX != 0 && currentY - 1 >= 0 && getMapTile(&game->map, currentX, currentY - 1)->type != TileTypeWall);
+        bool isInRoom = (directionY != 0 && currentX + 1 < game->map.width && mapGetTile(&game->map, currentX + 1, currentY)->type != TileTypeWall)
+                        || (directionY != 0 && currentX - 1 >= 0 && mapGetTile(&game->map, currentX - 1, currentY)->type != TileTypeWall)
+                        || (directionX != 0 && currentY + 1 < game->map.height && mapGetTile(&game->map, currentX, currentY + 1)->type != TileTypeWall)
+                        || (directionX != 0 && currentY - 1 >= 0 && mapGetTile(&game->map, currentX, currentY - 1)->type != TileTypeWall);
 
         if (!isInRoom && roomCooldown == 0 && GetRandomValue(0, 100) <= MAP_GENERATOR_STEP_ROOM_CHANCE) {
 
@@ -414,7 +412,7 @@ void generateMap(Game* game, int width, int height) {
            for (int roomY = roomStartY; roomY <= roomEndY; ++roomY) {
                for (int roomX = roomStartX; roomX <= roomEndX; ++roomX) {
 
-                   Tile* t = getMapTile(&game->map, roomX, roomY);
+                   Tile* t = mapGetTile(&game->map, roomX, roomY);
                    *t = createTile(TileTypeFloor);
                    t->glyph.fgColor = DARKGRAY;
 
@@ -454,7 +452,7 @@ void generateMap(Game* game, int width, int height) {
     for (int y = 0; y < game->map.height; ++y) {
         for (int x = 0; x < game->map.width; ++x) {
             if (y == 0 || y == game->map.height - 1 || x == 0 || x == game->map.width - 1) {
-                *getMapTile(&game->map, x, y) = createTile(TileTypeWall);
+                *mapGetTile(&game->map, x, y) = createTile(TileTypeWall);
             }
         }
     }
@@ -466,7 +464,7 @@ void generateMap(Game* game, int width, int height) {
         size_t randomRoom = GetRandomValue(0, roomsCount);
         px = GetRandomValue(rooms[randomRoom + 0], rooms[randomRoom + 2]);
         py = GetRandomValue(rooms[randomRoom + 1], rooms[randomRoom + 3]);
-        if (getMapTile(&game->map, px, py)->type != TileTypeWall) break;
+        if (mapGetTile(&game->map, px, py)->type != TileTypeWall) break;
     }
 
     game->player.coord.x = px;
@@ -519,7 +517,7 @@ void renderMap(Game* game) {
 
             float alpha = 1.0f;
 
-            Tile* t = getMapTile(&game->map, x, y);
+            Tile* t = mapGetTile(&game->map, x, y);
 
             if (game->useLOS && !t->isInLOS && !t->isVisited) continue;
             if (!t->isInLOS && t->isVisited) alpha = 0.05f; // TODO: factor out faded alpha const
@@ -542,7 +540,7 @@ bool moveActor(Game* game, Actor* actor, int dx, int dy) {
 
     if (tx < 0 || tx >= game->map.width || ty < 0 || ty >= game->map.height) return false;
 
-    Tile* tile = getMapTile(&game->map, tx, ty);
+    Tile* tile = mapGetTile(&game->map, tx, ty);
 
     if (isTileBlocksMovement(tile)) return false;
 
@@ -686,7 +684,7 @@ int main(int argc, char** argv) {
             Vector2 hoverPosition = coord2screen(&game, mouseCoord);
             DrawRectangleLines(hoverPosition.x, hoverPosition.y, game.cellSize, game.cellSize, YELLOW);
 
-            Tile* t = getMapTile(&game.map, mouseCoord.x, mouseCoord.y);
+            Tile* t = mapGetTile(&game.map, mouseCoord.x, mouseCoord.y);
 
             char* tileTypeText;
             switch(t->type) {
