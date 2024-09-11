@@ -545,12 +545,18 @@ void renderText(Game* game, Vector2 position, const char* text, Color fgColor, C
 
 }
 
+void highlightTile(Game* game, Coord coord, Color color) {
+    Vector2 hoverPosition = coord2screen(game, coord);
+    // Rectangle rect = {hoverPosition.x, hoverPosition.y, game->cellSize, game->cellSize};
+    // DrawRectangleRoundedLines(rect, 1, 10, 1, color);
+    DrawRectangleLines(hoverPosition.x, hoverPosition.y, game->cellSize, game->cellSize, color);
+}
+
 void renderCurrentTileInfo(Game* game) {
 
     if (checkMapBounds(&game->map, game->mouseCoord.x, game->mouseCoord.y)) {
 
-        Vector2 hoverPosition = coord2screen(game, game->mouseCoord);
-        DrawRectangleLines(hoverPosition.x, hoverPosition.y, game->cellSize, game->cellSize, YELLOW);
+        highlightTile(game, game->mouseCoord, YELLOW);
 
         Tile* t = mapGetTile(&game->map, game->mouseCoord.x, game->mouseCoord.y);
 
@@ -570,15 +576,27 @@ void renderCurrentTileInfo(Game* game) {
             break;
         }
 
-        const char* currentTileText = TextFormat("Tile: type - %s, glyph - %c", tileTypeText, t->glyph.ch);
+        const char* currentTileText = TextFormat("Tile [%c] - %s", t->glyph.ch, tileTypeText);
         renderText(game, (Vector2) {10, 50}, currentTileText, YELLOW, Fade(BLACK, 0.85f));
 
     }
 
 }
 
+bool plotPathToMousePosition(Game* game, int x, int y) {
+    highlightTile(game, (Coord) {x, y}, GREEN);
+    return true;
+}
+
+void renderPathToMousePosition(Game* game) {
+
+    bresenham(game, game->player.coord.x, game->player.coord.y, game->mouseCoord.x, game->mouseCoord.y, &plotPathToMousePosition);
+
+}
+
 void renderUI(Game* game) {
 
+    // renderPathToMousePosition(game);
     renderCurrentTileInfo(game);
 
 }
