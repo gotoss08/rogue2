@@ -89,6 +89,33 @@ typedef struct {
 } GameCamera;
 
 typedef struct {
+    Font font;
+    int size;
+    int spacing;
+} GameFont;
+
+typedef struct {
+    char* text;
+    Color color;
+} DebugInfoLine;
+
+typedef struct {
+
+    GameFont font;
+
+    bool visible;
+    Vector2 offset;
+    Color bgColor;
+    DebugInfoLine lines[512];
+    size_t linesCount;
+
+} DebugInfo;
+
+typedef struct {
+    DebugInfo debugInfo;
+} UI;
+
+typedef struct {
 
     int windowWidth;
     int windowHeight;
@@ -110,6 +137,8 @@ typedef struct {
     float deltaTime;
     Vector2 mouse;
     Coord mouseCoord;
+
+    UI ui;
 
 } Game;
 
@@ -594,10 +623,51 @@ void renderPathToMousePosition(Game* game) {
 
 }
 
+void renderDebugInfo(DebugInfo* debugInfo) {
+
+    DebugInfo di = *debugInfo;
+
+    if (!di.visible) return;
+
+    float lineY = 0;
+
+    for (size_t i = 0; i < di.linesCount; ++i) {
+
+        DebugInfoLine line = di.lines[i];
+
+        Vector2 position = {di.offset.x, di.offset.y + lineY};
+
+        Vector2 textSize = MeasureTextEx(di.font.font, line.text, di.font.size, di.font.spacing);
+        DrawRectangle(position.x, position.y, textSize.x, textSize.y, di.bgColor);
+        DrawTextEx(di.font.font, line.text, position, di.font.size, di.font.spacing, line.color);
+
+        lineY += textSize.y;
+
+    }
+
+}
+
+void addDebugInfoLine(Game* game, const char* text, Color color) {
+
+    DebugInfoLine line = {0};
+    line.text = (char*) text;
+    line.color = color;
+
+    game->ui.debugInfo.lines[game->ui.debugInfo.linesCount] = line;
+    game->ui.debugInfo.linesCount++;
+
+}
+
+void clearDebugInfo(Game* game) {
+    game->ui.debugInfo.linesCount = 0;
+}
+
 void renderUI(Game* game) {
 
     // renderPathToMousePosition(game);
     renderCurrentTileInfo(game);
+
+    renderDebugInfo(&game->ui.debugInfo);
 
 }
 
@@ -648,6 +718,24 @@ void longMovePlayer(Game* game, int dx, int dy) {
     while (movePlayer(game, dx, dy));
 }
 
+void gameInitDebugInfo(Game* game) {
+
+    const int size = 32;
+
+    int codepoints[512] = { 0 };
+    for (int i = 0; i < 95; i++) codepoints[i] = 32 + i;   // Basic ASCII characters
+    for (int i = 0; i < 255; i++) codepoints[96 + i] = 0x0400 + i;   // Cyrillic characters
+
+    GameFont font;
+    font.font = LoadFontEx("Iosevka-Regular.ttf", size, codepoints, 512);
+    font.size = size;
+    font.spacing = 1;
+
+    game->ui.debugInfo.font = font;
+    game->ui.debugInfo.bgColor = Fade(BLACK, 0.65f);
+
+}
+
 int main(int argc, char** argv) {
 
     (void) argc;
@@ -671,6 +759,8 @@ int main(int argc, char** argv) {
     game.mapFontSize = MAP_FONT_SIZE;
     game.cellSize = MAP_FONT_SIZE;
 
+    gameInitDebugInfo(&game);
+
     dbg_num(game.mapFontSize);
     dbg_num(game.mapFont.baseSize);
     dbg_num(game.cellSize);
@@ -688,7 +778,12 @@ int main(int argc, char** argv) {
 
     while (!WindowShouldClose()) {
 
+        clearDebugInfo(&game);
+
+        addDebugInfoLine(&game, TextFormat("FPS: %d", GetFPS()), WHITE);
+
         game.deltaTime = GetFrameTime();
+        addDebugInfoLine(&game, TextFormat("Frame time: %f", game.deltaTime), WHITE);
 
         if (IsWindowResized()) {
             game.windowWidth = GetScreenWidth();
@@ -701,6 +796,8 @@ int main(int argc, char** argv) {
 
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
+
+        if (IsKeyPressed(KEY_F3)) game.ui.debugInfo.visible = !game.ui.debugInfo.visible;
 
         // up movement
 
@@ -751,7 +848,7 @@ int main(int argc, char** argv) {
         cameraTarget(&game, game.player.glyph.position);
         cameraUpdate(&game);
 
-        DrawFPS(10, 10);
+        // DrawFPS(10, 10);
 
         EndDrawing();
 
