@@ -606,7 +606,8 @@ void renderCurrentTileInfo(Game* game) {
         }
 
         const char* currentTileText = TextFormat("Tile [%c] - %s", t->glyph.ch, tileTypeText);
-        renderText(game, (Vector2) {10, 50}, currentTileText, YELLOW, Fade(BLACK, 0.85f));
+        Vector2 size = MeasureTextEx(game->mapFont, currentTileText, game->mapFontSize, 1);
+        renderText(game, (Vector2) {10, game->windowHeight - 10 - size.y}, currentTileText, YELLOW, Fade(BLACK, 0.85f));
 
     }
 
