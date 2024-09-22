@@ -41,8 +41,6 @@
 #define ROOM_MAX_HEIGHT 10
 #define MAX_ROOMS_COUNT(mapWidth, mapHeight) (int) floor(((double)(mapWidth*mapHeight)) / ((double)(ROOM_MIN_WIDTH*ROOM_MIN_HEIGHT)))
 
-#define RENDER_GLYPHS_CENTERED 0
-
 typedef struct {
     int x;
     int y;
@@ -139,6 +137,8 @@ typedef struct {
     Coord mouseCoord;
 
     UI ui;
+
+    bool renderGlyphsCentered;
 
 } Game;
 
@@ -519,19 +519,19 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
 
     Vector2 chTargetPosition = coord2vector(game, coord);
 
+    if (game->renderGlyphsCentered) {
+        GlyphInfo glyphInfo = GetGlyphInfo(game->mapFont, (int) glyph->ch);
+        Vector2 textSize = MeasureTextEx(game->mapFont, chBuffer, game->mapFontSize, 1);
+        chTargetPosition = Vector2Add(chTargetPosition, (Vector2) {(float) cellSize / 2 - (float) glyphInfo.offsetX / 2, (float) cellSize / 2 - (float) glyphInfo.offsetY / 2});
+        chTargetPosition = Vector2Subtract(chTargetPosition, Vector2Scale(textSize, 0.5));
+    }
+
     if (glyph->animateMovement && !Vector2Equals(glyph->position, chTargetPosition)) {
         glyph->position = Vector2Lerp(glyph->position, chTargetPosition, easeOutBack(glyph->animationTime));
         glyph->animationTime += game->deltaTime;
     } else glyph->position = chTargetPosition;
 
     Vector2 bgTargetPosition = glyph->position;
-
-    if (RENDER_GLYPHS_CENTERED) {
-        GlyphInfo glyphInfo = GetGlyphInfo(game->mapFont, (int) glyph->ch);
-        Vector2 textSize = MeasureTextEx(game->mapFont, chBuffer, game->mapFontSize, 1);
-        chTargetPosition = Vector2Add(chTargetPosition, (Vector2) {(float) cellSize / 2 - (float) glyphInfo.offsetX / 2, (float) cellSize / 2 - (float) glyphInfo.offsetY / 2});
-        chTargetPosition = Vector2Subtract(chTargetPosition, Vector2Scale(textSize, 0.5));
-    }
 
     Vector2 chRenderingPosition = vector2screen(game, glyph->position);
     Vector2 bgRenderingPosition = vector2screen(game, bgTargetPosition);
@@ -721,14 +721,16 @@ void longMovePlayer(Game* game, int dx, int dy) {
 
 void gameInitDebugInfo(Game* game) {
 
-    const int size = 32;
+    const int size = 24;
 
     int codepoints[512] = { 0 };
     for (int i = 0; i < 95; i++) codepoints[i] = 32 + i;   // Basic ASCII characters
     for (int i = 0; i < 255; i++) codepoints[96 + i] = 0x0400 + i;   // Cyrillic characters
 
     GameFont font;
-    font.font = LoadFontEx("Iosevka-Regular.ttf", size, codepoints, 512);
+    // font.font = LoadFontEx("assets/fonts/DejaVuSans.ttf", size, codepoints, 512); // Iosevka-Regular.ttf
+    font.font = LoadFontEx("Iosevka-Regular.ttf", size, codepoints, 512); // Iosevka-Regular.ttf
+    SetTextureFilter(font.font.texture, TEXTURE_FILTER_POINT);
     font.size = size;
     font.spacing = 1;
 
@@ -752,6 +754,7 @@ int main(int argc, char** argv) {
     game.useLOS = true;
     game.windowWidth = WINDOW_WIDTH;
     game.windowHeight = WINDOW_HEIGHT;
+    game.renderGlyphsCentered = true;
 
     int codepoints[512] = { 0 };
     for (int i = 0; i < 95; i++) codepoints[i] = 32 + i;   // Basic ASCII characters
@@ -797,6 +800,7 @@ int main(int argc, char** argv) {
 
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
+        if (IsKeyPressed(KEY_F1)) game.renderGlyphsCentered = !game.renderGlyphsCentered;
 
         if (IsKeyPressed(KEY_F3)) game.ui.debugInfo.visible = !game.ui.debugInfo.visible;
 
