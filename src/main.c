@@ -794,8 +794,6 @@ int main(int argc, char** argv) {
             game.windowHeight = GetScreenHeight();
         }
 
-        BeginDrawing();
-
         // TODO: write custom keys handling and mapping function
 
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
@@ -843,6 +841,8 @@ int main(int argc, char** argv) {
         Vector2 mouse = GetMousePosition();
         game.mouse = mouse;
         game.mouseCoord = screen2coord(&game, mouse);
+
+        BeginDrawing();
 
         ClearBackground(BLACK);
 
