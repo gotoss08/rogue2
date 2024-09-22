@@ -602,9 +602,11 @@ void renderCurrentTileInfo(Game* game) {
 
     if (checkMapBounds(&game->map, game->mouseCoord.x, game->mouseCoord.y)) {
 
-        highlightTile(game, game->mouseCoord, YELLOW);
-
         Tile* t = mapGetTile(&game->map, game->mouseCoord.x, game->mouseCoord.y);
+
+        if (!t->isInLOS && !t->isVisited) return;
+
+        highlightTile(game, game->mouseCoord, YELLOW);
 
         char* tileTypeText;
         switch(t->type) {
