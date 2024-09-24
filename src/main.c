@@ -19,14 +19,9 @@
 #define dbg_num(x) printf("DEBUG: [%s] = %d\n", #x, x)
 #define dbg_str(x) printf("DEBUG: [%s] = %s\n", #x, x)
 
-#define WINDOW_WIDTH 1280
-#define WINDOW_HEIGHT 720
-
 #define NORMAL_FPS 60
 #define TARGET_FPS 60
 #define LERPING_FACTOR(x) x * ((float) NORMAL_FPS / (float) TARGET_FPS)
-
-#define MAP_FONT_SIZE 32
 
 #define MAP_WIDTH 128
 #define MAP_HEIGHT 128
@@ -40,6 +35,9 @@
 #define ROOM_MIN_HEIGHT 3
 #define ROOM_MAX_HEIGHT 10
 #define MAX_ROOMS_COUNT(mapWidth, mapHeight) (int) floor(((double)(mapWidth*mapHeight)) / ((double)(ROOM_MIN_WIDTH*ROOM_MIN_HEIGHT)))
+
+const int WINDOW_WIDTH = 1280;
+const int WINDOW_HEIGHT = 720;
 
 typedef struct {
     int x;
@@ -99,8 +97,6 @@ typedef struct {
 
 typedef struct {
 
-    GameFont font;
-
     bool visible;
     Vector2 offset;
     Color bgColor;
@@ -118,8 +114,11 @@ typedef struct {
     int windowWidth;
     int windowHeight;
 
-    GameFont mapFont;
     int cellSize;
+
+    GameFont glyphFont;
+    GameFont uiFont;
+    GameFont debugFont;
 
     GameCamera camera;
 
@@ -156,6 +155,21 @@ GameFont createGameFont(char* filepath, int size) {
     SetTextureFilter(font.font.texture, TEXTURE_FILTER_POINT);
 
     return font;
+
+}
+
+void renderText(GameFont* font, const char* text, Vector2 position, Color color) {
+    DrawTextEx(font->font, text, position, font->size, font->spacing, color);
+}
+
+Vector2 renderTextBg(GameFont* font, const char* text, Vector2 position, Color fgColor, Color bgColor) {
+
+    Vector2 textSize = MeasureTextEx(font->font, text, font->size, font->spacing);
+
+    DrawRectangleV(position, textSize, bgColor);
+    renderText(font, text, position, fgColor);
+
+    return textSize;
 
 }
 
@@ -537,8 +551,8 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
     Vector2 chTargetPosition = coord2vector(game, coord);
 
     if (game->renderGlyphsCentered) {
-        GlyphInfo glyphInfo = GetGlyphInfo(game->mapFont.font, (int) glyph->ch);
-        Vector2 textSize = MeasureTextEx(game->mapFont.font, chBuffer, game->mapFont.size, game->mapFont.spacing);
+        GlyphInfo glyphInfo = GetGlyphInfo(game->glyphFont.font, (int) glyph->ch);
+        Vector2 textSize = MeasureTextEx(game->glyphFont.font, chBuffer, game->glyphFont.size, game->glyphFont.spacing);
         chTargetPosition = Vector2Add(chTargetPosition, (Vector2) {(float) cellSize / 2 - (float) glyphInfo.offsetX / 2, (float) cellSize / 2 - (float) glyphInfo.offsetY / 2});
         chTargetPosition = Vector2Subtract(chTargetPosition, Vector2Scale(textSize, 0.5));
     }
@@ -554,7 +568,7 @@ void renderGlyph(Game* game, Coord coord, Glyph* glyph) {
     Vector2 bgRenderingPosition = vector2screen(game, bgTargetPosition);
 
     DrawRectangle(bgRenderingPosition.x, bgRenderingPosition.y, cellSize, cellSize, glyph->bgColor);
-    DrawTextEx(game->mapFont.font, chBuffer, chRenderingPosition, game->mapFont.size, game->mapFont.spacing, glyph->fgColor);
+    DrawTextEx(game->glyphFont.font, chBuffer, chRenderingPosition, game->glyphFont.size, game->glyphFont.spacing, glyph->fgColor);
 
 }
 
@@ -580,15 +594,6 @@ void renderMap(Game* game) {
 
 void renderActor(Game* game, Actor* actor) {
     renderGlyph(game, actor->coord, &actor->glyph);
-}
-
-void renderText(Game* game, Vector2 position, const char* text, Color fgColor, Color bgColor) {
-
-    Vector2 textSize = MeasureTextEx(game->mapFont.font, text, game->mapFont.size, game->mapFont.spacing);
-
-    DrawRectangle(position.x, position.y, textSize.x, textSize.y, bgColor);
-    DrawTextEx(game->mapFont.font, text, position, game->mapFont.size, game->mapFont.spacing, fgColor);
-
 }
 
 void highlightTile(Game* game, Coord coord, Color color) {
@@ -625,8 +630,8 @@ void renderCurrentTileInfo(Game* game) {
         }
 
         const char* currentTileText = TextFormat("Tile [%c] - %s", t->glyph.ch, tileTypeText);
-        Vector2 size = MeasureTextEx(game->mapFont.font, currentTileText, game->mapFont.size, game->mapFont.spacing);
-        renderText(game, (Vector2) {10, game->windowHeight - 10 - size.y}, currentTileText, YELLOW, Fade(BLACK, 0.85f));
+        Vector2 size = MeasureTextEx(game->uiFont.font, currentTileText, game->uiFont.size, game->uiFont.spacing);
+        renderTextBg(&game->uiFont, currentTileText, (Vector2) {10, game->windowHeight - 10 - size.y}, YELLOW, Fade(BLACK, 0.85f));
 
     }
 
@@ -643,7 +648,7 @@ void renderPathToMousePosition(Game* game) {
 
 }
 
-void renderDebugInfo(DebugInfo* debugInfo) {
+void renderDebugInfo(Game* game, DebugInfo* debugInfo) {
 
     DebugInfo di = *debugInfo;
 
@@ -656,10 +661,7 @@ void renderDebugInfo(DebugInfo* debugInfo) {
         DebugInfoLine line = di.lines[i];
 
         Vector2 position = {di.offset.x, di.offset.y + lineY};
-
-        Vector2 textSize = MeasureTextEx(di.font.font, line.text, di.font.size, di.font.spacing);
-        DrawRectangle(position.x, position.y, textSize.x, textSize.y, di.bgColor);
-        DrawTextEx(di.font.font, line.text, position, di.font.size, di.font.spacing, line.color);
+        Vector2 textSize = renderTextBg(&game->debugFont, line.text, position, line.color, di.bgColor);
 
         lineY += textSize.y;
 
@@ -687,7 +689,7 @@ void renderUI(Game* game) {
     // renderPathToMousePosition(game);
     renderCurrentTileInfo(game);
 
-    renderDebugInfo(&game->ui.debugInfo);
+    renderDebugInfo(game, &game->ui.debugInfo);
 
 }
 
@@ -738,14 +740,6 @@ void longMovePlayer(Game* game, int dx, int dy) {
     while (movePlayer(game, dx, dy));
 }
 
-void gameInitDebugInfo(Game* game) {
-
-    // game->ui.debugInfo.font = createGameFont("assets/fonts/DejaVuSans.ttf", 24);
-    game->ui.debugInfo.font = createGameFont("Iosevka-Regular.ttf", 24);
-    game->ui.debugInfo.bgColor = Fade(BLACK, 0.65f);
-
-}
-
 int main(int argc, char** argv) {
 
     (void) argc;
@@ -758,18 +752,23 @@ int main(int argc, char** argv) {
     SetTargetFPS(TARGET_FPS);
 
     Game game = {0};
-    game.useLOS = true;
     game.windowWidth = WINDOW_WIDTH;
     game.windowHeight = WINDOW_HEIGHT;
+    game.cellSize = 32;
+
+    game.glyphFont = createGameFont("assets/fonts/DejaVuSansMono.ttf", 32);
+    // game.glyphFont = createGameFont("assets/fonts/FSEX302.ttf", 32);
+    game.uiFont = createGameFont("assets/fonts/DejaVuSans.ttf", 26);
+    game.debugFont = createGameFont("assets/fonts/Iosevka-Regular.ttf", 24);
+
+    game.useLOS = true;
     game.renderGlyphsCentered = true;
 
-    game.mapFont = createGameFont("DejaVuSansMono.ttf", MAP_FONT_SIZE);
-    game.cellSize = MAP_FONT_SIZE;
+    game.ui.debugInfo.offset = (Vector2) { 5, 5 };
+    game.ui.debugInfo.bgColor = Fade(BLACK, 0.65f);
 
-    gameInitDebugInfo(&game);
-
-    dbg_num(game.mapFont.size);
-    dbg_num(game.mapFont.font.baseSize);
+    dbg_num(game.glyphFont.size);
+    dbg_num(game.glyphFont.font.baseSize);
     dbg_num(game.cellSize);
 
     initPlayer(&game.player);
@@ -779,7 +778,7 @@ int main(int argc, char** argv) {
     //     int ch = codepoints[i];
     //     char tempBuf[2];
     //     sprintf(tempBuf, "%c", ch);
-    //     Vector2 charSize = MeasureTextEx(game.mapFont, tempBuf, game.mapFontSize, 1);
+    //     Vector2 charSize = MeasureTextEx(game.glyphFont, tempBuf, game.glyphFontSize, 1);
     //     printf("%c %dx%d\n", ch, (int) charSize.x, (int) charSize.y);
     // }
 
@@ -802,7 +801,6 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
         if (IsKeyPressed(KEY_F1)) game.renderGlyphsCentered = !game.renderGlyphsCentered;
-
         if (IsKeyPressed(KEY_F3)) game.ui.debugInfo.visible = !game.ui.debugInfo.visible;
 
         // up movement
