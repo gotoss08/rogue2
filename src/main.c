@@ -137,6 +137,7 @@ typedef struct {
     UI ui;
 
     bool renderGlyphsCentered;
+    bool renderUsingShaders;
 
 } Game;
 
@@ -740,6 +741,26 @@ void longMovePlayer(Game* game, int dx, int dy) {
     while (movePlayer(game, dx, dy));
 }
 
+typedef struct {
+    Shader shader;
+    int resLoc;
+    int timeLoc;
+} GameShader;
+
+GameShader loadGameShader(const char* filepath) {
+    GameShader gs;
+    gs.shader = LoadShader(0, filepath);
+    gs.resLoc = GetShaderLocation(gs.shader, "iResolution");
+    gs.timeLoc = GetShaderLocation(gs.shader, "iTime");
+    return gs;
+}
+
+void updateGameShader(GameShader shader, float* resolution, float* time) {
+    SetShaderValue(shader.shader, shader.resLoc, resolution, SHADER_UNIFORM_VEC3);
+    SetShaderValue(shader.shader, shader.timeLoc, time, SHADER_UNIFORM_FLOAT);
+}
+
+
 int main(int argc, char** argv) {
 
     (void) argc;
@@ -750,6 +771,12 @@ int main(int argc, char** argv) {
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(WINDOW_WIDTH, WINDOW_HEIGHT, "rogue v0.1");
     SetTargetFPS(TARGET_FPS);
+
+    RenderTexture2D buffer = LoadRenderTexture(WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    GameShader bloomShader = loadGameShader("shaders/bloom.fs");
+    GameShader crt1Shader = loadGameShader("shaders/crt1.fs");
+    GameShader crt2Shader = loadGameShader("shaders/crt2.fs");
 
     Game game = {0};
     game.windowWidth = WINDOW_WIDTH;
@@ -763,6 +790,7 @@ int main(int argc, char** argv) {
 
     game.useLOS = true;
     game.renderGlyphsCentered = true;
+    game.renderUsingShaders = true;
 
     game.ui.debugInfo.offset = (Vector2) { 5, 5 };
     game.ui.debugInfo.bgColor = Fade(BLACK, 0.65f);
@@ -801,6 +829,7 @@ int main(int argc, char** argv) {
         if (IsKeyPressed(KEY_R)) generateMap(&game, MAP_WIDTH, MAP_HEIGHT);
         if (IsKeyPressed(KEY_L)) game.useLOS = !game.useLOS;
         if (IsKeyPressed(KEY_F1)) game.renderGlyphsCentered = !game.renderGlyphsCentered;
+        if (IsKeyPressed(KEY_F2)) game.renderUsingShaders = !game.renderUsingShaders;
         if (IsKeyPressed(KEY_F3)) game.ui.debugInfo.visible = !game.ui.debugInfo.visible;
 
         // up movement
@@ -843,7 +872,11 @@ int main(int argc, char** argv) {
         game.mouse = mouse;
         game.mouseCoord = screen2coord(&game, mouse);
 
-        BeginDrawing();
+        if (game.renderUsingShaders) {
+            BeginTextureMode(buffer);
+        } else {
+            BeginDrawing();
+        }
 
         ClearBackground(BLACK);
 
@@ -851,15 +884,55 @@ int main(int argc, char** argv) {
         renderActor(&game, &game.player);
         renderUI(&game);
 
+        if (game.renderUsingShaders) {
+            EndTextureMode();
+        } else {
+            EndDrawing();
+        }
+
+        if (game.renderUsingShaders) {
+
+            // update shaders
+
+            float resolution[3] = { (float)GetScreenWidth(), (float)GetScreenHeight(), 0.0f };
+            float time = GetTime();
+
+            updateGameShader(crt1Shader, resolution, &time);
+            updateGameShader(crt2Shader, resolution, &time);
+            updateGameShader(bloomShader, resolution, &time);
+
+            // render prepared texture using shaders
+
+            BeginDrawing();
+
+            ClearBackground(BLACK);
+
+            // TODO: implement shader switching
+            BeginShaderMode(crt1Shader.shader);
+            /* BeginShaderMode(crt2Shader.shader); */
+            /* BeginShaderMode(bloomShader.shader); */
+            DrawTexture(buffer.texture, 0, 0, WHITE);
+            EndShaderMode();
+
+            EndDrawing();
+
+        }
+
+        // update
+
         cameraTarget(&game, game.player.glyph.position);
         cameraUpdate(&game);
 
         // DrawFPS(10, 10);
 
-        EndDrawing();
-
     }
+
+    UnloadShader(crt1Shader.shader);
+    UnloadShader(crt2Shader.shader);
+    UnloadShader(bloomShader.shader);
+
     CloseWindow();
+
     return 0;
 }
 
